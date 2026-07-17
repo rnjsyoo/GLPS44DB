@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>GLPS 44 · DB 관리보드</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --navy:#1f4e5f; --navy2:#16394a; --accent:#2e86ab; --bg:#f4f6f8; --card:#ffffff;
+  --line:#e3e8ee; --txt:#1d2733; --sub:#6b7a8c; --yellow:#fff2cc; --red:#c0392b;
+  --green:#1e8e5a; --amber:#b7791f; --purple:#7030a0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard','Apple SD Gothic Neo','맑은 고딕','Malgun Gothic',system-ui,sans-serif;
+  background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;font-size:13px}
+input,select,textarea{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);
+  border-radius:8px;background:#fff;color:var(--txt)}
+input:focus,select:focus,textarea:focus{outline:2px solid #bcd9e8;border-color:var(--accent)}
+.btn{padding:8px 14px;background:var(--navy);color:#fff;font-weight:600}
+.btn:hover{background:var(--navy2)}
+.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line)}
+.btn.ghost:hover{background:#f0f4f7}
+.btn.sm{padding:4px 9px;font-size:12px;border-radius:6px}
+.btn.warn{background:var(--red)}
+.btn.green{background:var(--green)}
+/* login */
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,var(--navy) 0%,var(--navy2) 100%)}
+.login-card{background:#fff;border-radius:16px;padding:38px 34px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.login-card h1{font-size:20px;color:var(--navy);margin-bottom:4px}
+.login-card p{color:var(--sub);font-size:12.5px;margin-bottom:20px}
+.login-card input{width:100%;margin-bottom:10px;padding:11px 12px}
+.login-card .btn{width:100%;padding:11px;font-size:14px;margin-top:4px}
+.login-err{color:var(--red);font-size:12.5px;margin-top:10px;min-height:18px}
+/* header */
+header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:50}
+.hwrap{max-width:1280px;margin:0 auto;padding:0 18px;display:flex;align-items:center;gap:14px;height:54px}
+.hwrap h1{font-size:16px;font-weight:700;letter-spacing:.3px}
+.hwrap .tag{font-size:10.5px;background:rgba(255,255,255,.15);padding:2px 8px;border-radius:20px}
+.hspace{flex:1}
+.uinfo{font-size:12px;opacity:.85}
+.dot{width:8px;height:8px;border-radius:50%;background:#77e0a8;display:inline-block;margin-right:5px}
+.dot.off{background:#e07777}
+nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:54px;z-index:49}
+.nwrap{max-width:1280px;margin:0 auto;padding:0 12px;display:flex;gap:2px;overflow-x:auto}
+.ntab{padding:12px 16px;font-size:13.5px;font-weight:600;color:var(--sub);border-bottom:2.5px solid transparent;background:none;white-space:nowrap}
+.ntab.on{color:var(--navy);border-color:var(--navy)}
+main{max-width:1280px;margin:0 auto;padding:20px 18px 60px}
+.view{display:none}.view.on{display:block}
+/* cards & tables */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.scard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.scard .k{font-size:12px;color:var(--sub);font-weight:600}
+.scard .v{font-size:26px;font-weight:800;color:var(--navy);margin-top:2px}
+.scard .v small{font-size:12px;color:var(--sub);font-weight:600}
+.scard.hl .v{color:var(--red)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:16px;overflow:hidden}
+.phead{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.phead h2{font-size:14px;color:var(--navy)}
+.phead .cnt{font-size:12px;background:var(--bg);border-radius:20px;padding:2px 10px;color:var(--sub);font-weight:700}
+.pbody{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f7f9fb;color:var(--sub);font-size:11.5px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0}
+td{padding:8px 10px;border-bottom:1px solid #eef2f5;white-space:nowrap;vertical-align:middle}
+tr:hover td{background:#f6fafc}
+tr.click{cursor:pointer}
+.empty{padding:26px;text-align:center;color:var(--sub);font-size:13px}
+/* chips */
+.chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700}
+.c-in{background:#e3f4ec;color:var(--green)}
+.c-out{background:#fdeee2;color:var(--amber)}
+.c-outh{background:#fdeee2;color:var(--amber)}
+.c-left{background:#fbe4e1;color:var(--red)}
+.c-plan{background:#e9e4f5;color:var(--purple)}
+.c-med{background:#e2ecfd;color:#2456a8}
+.badge{display:inline-block;font-size:10px;font-weight:800;border-radius:4px;padding:1px 5px;margin-left:5px;vertical-align:1px}
+.b-dup{background:#fbe4e1;color:var(--red)}
+.b-sib{background:#e2ecfd;color:#2456a8}
+.b-alg{background:var(--yellow);color:#8a6d1a}
+/* toolbar */
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.tools input[type=search]{width:230px}
+/* modal */
+.mback{position:fixed;inset:0;background:rgba(15,30,40,.55);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:40px 14px;overflow-y:auto}
+.mback.on{display:flex}
+.modal{background:#fff;border-radius:14px;width:100%;max-width:680px;box-shadow:0 24px 80px rgba(0,0,0,.3)}
+.mhead{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center}
+.mhead h3{font-size:15px;color:var(--navy)}
+.mx{margin-left:auto;background:none;font-size:20px;color:var(--sub);padding:0 4px}
+.mbody{padding:18px 20px}
+.mfoot{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 14px}
+.fld label{display:block;font-size:11.5px;color:var(--sub);font-weight:700;margin-bottom:3px}
+.fld input,.fld select,.fld textarea{width:100%}
+.fld .ro{background:#f4f6f8;color:#5a6b7c}
+.fld.edit input,.fld.edit select,.fld.edit textarea{background:var(--yellow)}
+.sect{font-size:12px;font-weight:800;color:var(--navy);margin:16px 0 8px;border-top:1px dashed var(--line);padding-top:12px}
+.hist{font-size:12.5px;border-left:3px solid var(--line);padding:2px 0 2px 10px;margin-bottom:6px;color:#41505f}
+.note{font-size:12px;color:var(--sub)}
+.setup{max-width:760px;margin:60px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:34px}
+.setup h1{color:var(--navy);font-size:20px;margin-bottom:12px}
+.setup ol{margin:12px 0 12px 20px;line-height:2}
+.setup code{background:#f0f4f7;padding:2px 6px;border-radius:5px;font-size:12.5px}
+@media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}.tools input[type=search]{width:100%}}
+</style>
+</head>
+<body>
+
+<!-- 설정 안내 (CONFIG 미입력 시) -->
+<div id="setup" style="display:none">
+  <div class="setup">
+    <h1>GLPS 44 DB 관리보드 — 초기 설정 필요</h1>
+    <p>아직 Supabase 연결 정보가 입력되지 않았습니다. 아래 순서대로 진행하세요.</p>
+    <ol>
+      <li><a href="https://supabase.com" target="_blank">supabase.com</a> 가입 → New Project 생성</li>
+      <li>SQL Editor에서 <code>supabase/schema.sql</code> 실행 → 이어서 <code>supabase/seed_students.sql</code> 실행</li>
+      <li>Authentication → Users → <b>Add user</b>로 나와 법인 계정(이메일/비밀번호) 2개 생성</li>
+      <li>Project Settings → API에서 <code>Project URL</code>과 <code>anon public key</code> 복사</li>
+      <li>이 파일(index.html) 상단 <code>CONFIG</code>에 붙여넣고 저장 → 깃허브에 다시 업로드</li>
+    </ol>
+    <p class="note">자세한 내용은 함께 제공된 README.md 참고.</p>
+  </div>
+</div>
+
+<!-- 로그인 -->
+<div id="login" style="display:none">
+  <div class="login-card">
+    <h1>GLPS 44 · DB 관리보드</h1>
+    <p>운영·법인 전용 페이지입니다. 계정으로 로그인하세요.</p>
+    <input id="li-email" type="email" placeholder="이메일" autocomplete="username">
+    <input id="li-pw" type="password" placeholder="비밀번호" autocomplete="current-password">
+    <button class="btn" id="li-btn">로그인</button>
+    <div class="login-err" id="li-err"></div>
+  </div>
+</div>
+
+<!-- 앱 -->
+<div id="app" style="display:none">
+<header><div class="hwrap">
+  <h1>GLPS 44 · DB 관리보드</h1><span class="tag">운영/법인 공용</span>
+  <div class="hspace"></div>
+  <span class="uinfo"><span class="dot" id="condot"></span><span id="uemail"></span></span>
+  <button class="btn sm ghost" id="logout">로그아웃</button>
+</div></header>
+<nav><div class="nwrap">
+  <button class="ntab on" data-v="dash">현황판</button>
+  <button class="ntab" data-v="students">학생 명단</button>
+  <button class="ntab" data-v="leaves">외출외박·퇴소</button>
+  <button class="ntab" data-v="delayed">지연입소</button>
+  <button class="ntab" data-v="refund">정산(법인)</button>
+  <button class="ntab" data-v="settings">설정</button>
+</div></nav>
+<main>
+
+<div class="view on" id="v-dash">
+  <div class="cards">
+    <div class="scard"><div class="k">기준인원</div><div class="v" id="d-base">-</div></div>
+    <div class="scard"><div class="k">재적인원 <small>(기준-퇴소)</small></div><div class="v" id="d-enrolled">-</div></div>
+    <div class="scard"><div class="k">입소인원 <small>(현재 학교에 있음)</small></div><div class="v" id="d-oncampus">-</div></div>
+    <div class="scard hl"><div class="k">현재 외부</div><div class="v" id="d-out">-</div></div>
+    <div class="scard"><div class="k">퇴소</div><div class="v" id="d-left">-</div></div>
+  </div>
+  <div class="panel"><div class="phead"><h2>현재 외부 학생 — 귀가(보건)</h2><span class="cnt" id="c-outh">0명</span></div>
+    <div class="pbody" id="b-outh"></div></div>
+  <div class="panel"><div class="phead"><h2>현재 외부 학생 — 귀가(개인사유)</h2><span class="cnt" id="c-outp">0명</span></div>
+    <div class="pbody" id="b-outp"></div></div>
+  <div class="panel"><div class="phead"><h2>귀가·퇴소 예정</h2><span class="cnt" id="c-plan">0명</span></div>
+    <div class="pbody" id="b-plan"></div></div>
+  <div class="panel"><div class="phead"><h2>지연입소 대기</h2><span class="cnt" id="c-delay">0명</span></div>
+    <div class="pbody" id="b-delay"></div></div>
+  <div class="panel"><div class="phead"><h2>반별 인원</h2><span class="note">반 확정 후 자동 집계</span></div>
+    <div class="pbody" id="b-class"></div></div>
+</div>
+
+<div class="view" id="v-students">
+  <div class="tools">
+    <input type="search" id="s-q" placeholder="이름·영문명·학교·호실·접수번호 검색">
+    <select id="s-grade"><option value="">학년 전체</option><option>5</option><option>6</option><option>7</option><option>8</option></select>
+    <select id="s-gender"><option value="">성별 전체</option><option>남</option><option>여</option></select>
+    <select id="s-status"><option value="">상태 전체</option><option>입교</option><option>외부(귀가)</option><option>예정</option><option>퇴소</option></select>
+    <select id="s-class"><option value="">반 전체</option></select>
+    <span class="hspace" style="flex:1"></span>
+    <span class="note" id="s-count"></span>
+    <button class="btn ghost sm" id="s-csv">CSV 내보내기</button>
+  </div>
+  <div class="panel"><div class="pbody" id="s-table"></div></div>
+</div>
+
+<div class="view" id="v-leaves">
+  <div class="tools">
+    <select id="l-filter">
+      <option value="">전체 기록</option><option value="out">현재 외부</option><option value="plan">예정</option>
+      <option value="퇴소">퇴소</option><option value="back">귀교 완료</option>
+    </select>
+    <span style="flex:1"></span>
+    <button class="btn ghost sm" id="l-csv">CSV 내보내기</button>
+    <button class="btn sm" id="l-add">+ 기록 추가</button>
+  </div>
+  <div class="panel"><div class="pbody" id="l-table"></div></div>
+  <p class="note">귀교 시 [귀교] 버튼 → 귀교일 입력만 하면 끝. 환불일수·비고는 정산 탭에서 법인이 기록.</p>
+</div>
+
+<div class="view" id="v-delayed">
+  <div class="tools"><span style="flex:1"></span><button class="btn sm" id="dl-add">+ 지연입소 추가</button></div>
+  <div class="panel"><div class="pbody" id="dl-table"></div></div>
+</div>
+
+<div class="view" id="v-refund">
+  <p class="note" style="margin-bottom:10px">퇴소·귀가 기록의 환불 정보(법인 기록란). 환불일수·비고 칸을 수정하면 자동 저장됩니다.</p>
+  <div class="panel"><div class="pbody" id="r-table"></div></div>
+</div>
+
+<div class="view" id="v-settings">
+  <div class="panel"><div class="phead"><h2>클래스 PA</h2><span class="note">반 배정 확정 후 입력 → 현황판 자동 연결</span></div>
+    <div class="pbody" id="pa-table"></div></div>
+  <div class="panel"><div class="phead"><h2>층 LA</h2><span class="note">표 마지막 행에서 바로 추가</span></div>
+    <div class="pbody" id="la-table"></div></div>
+  <div class="panel"><div class="phead"><h2>변경 이력 (최근 200건)</h2><button class="btn ghost sm" id="au-refresh">새로고침</button></div>
+    <div class="pbody" id="au-table"></div></div>
+</div>
+
+</main>
+</div>
+
+<!-- 학생 상세 모달 -->
+<div class="mback" id="m-stu"><div class="modal">
+  <div class="mhead"><h3 id="ms-title">학생 상세</h3><button class="mx" data-close="m-stu">×</button></div>
+  <div class="mbody" id="ms-body"></div>
+  <div class="mfoot">
+    <button class="btn ghost" id="ms-leave">외출외박 등록</button>
+    <button class="btn" id="ms-save">저장</button>
+  </div>
+</div></div>
+
+<!-- 기록 추가/수정 모달 -->
+<div class="mback" id="m-rec"><div class="modal">
+  <div class="mhead"><h3 id="mr-title">외출외박·퇴소 기록</h3><button class="mx" data-close="m-rec">×</button></div>
+  <div class="mbody">
+    <div class="grid2">
+      <div class="fld edit"><label>학생 (이름 또는 접수번호)</label><input id="mr-student" list="stu-list" placeholder="예: 이정호-예천초"><datalist id="stu-list"></datalist></div>
+      <div class="fld edit"><label>상태</label><select id="mr-type">
+        <option>귀가(보건)</option><option>귀가(개인사유)</option><option>귀가 예정</option><option>퇴소 예정</option>
+        <option>퇴소</option><option>귀교(보건)</option><option>귀교(개인사유)</option>
+        <option>안정 / bedrest</option><option>진료 / treatment</option><option>병원 / hospital</option>
+      </select></div>
+      <div class="fld edit"><label>귀가(퇴소)일</label><input id="mr-leave" placeholder="예: 1/18(일) 19:25"></div>
+      <div class="fld edit"><label>귀교일</label><input id="mr-return" placeholder="귀교 후 입력"></div>
+      <div class="fld edit"><label>귀교예정일(신청일)</label><input id="mr-planned" placeholder="예: 1/22(목) 19:00"></div>
+      <div class="fld edit"><label>사유</label><input id="mr-reason" placeholder="예: 고열, 졸업식"></div>
+    </div>
+    <div class="fld edit" style="margin-top:10px"><label>처리 현황</label><input id="mr-note" placeholder="예: 보호자 인계 완료"></div>
+  </div>
+  <div class="mfoot"><button class="btn" id="mr-save">저장</button></div>
+</div></div>
+
+<!-- 지연입소 모달 -->
+<div class="mback" id="m-dl"><div class="modal" style="max-width:520px">
+  <div class="mhead"><h3>지연입소</h3><button class="mx" data-close="m-dl">×</button></div>
+  <div class="mbody">
+    <div class="grid2">
+      <div class="fld edit"><label>학생</label><input id="md-student" list="stu-list" placeholder="이름 또는 접수번호"></div>
+      <div class="fld edit"><label>상태</label><select id="md-status"><option>입소 예정</option><option>입소 완료</option><option>취소</option></select></div>
+      <div class="fld edit"><label>입소 예정일</label><input id="md-expected" placeholder="예: 1/11(일) 15시"></div>
+      <div class="fld edit"><label>사유</label><input id="md-reason" placeholder="예: 방학 후 입소"></div>
+    </div>
+    <div class="fld edit" style="margin-top:10px"><label>비고</label><input id="md-note"></div>
+  </div>
+  <div class="mfoot"><button class="btn" id="md-save">저장</button></div>
+</div></div>
+
+<script>
+/* ================= 설정 =================
+   Supabase Project Settings → API 값 입력  */
+const CONFIG = {
+  SUPABASE_URL: "https://drwgaodrwmgztuotkozf.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyd2dhb2Ryd21nenR1b3Rrb3pmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyNTk1NTIsImV4cCI6MjA5OTgzNTU1Mn0.YRxYL0Zj2orJcVIG9coDseTtnTC9RyOPwz7ECSWnIOs"
+};
+/* ======================================== */
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let sb = null, me = null;
+let S = { students: [], leaves: [], delayed: [], staff: [] };
+
+const OUT_TYPES = ['귀가(보건)','귀가(개인사유)','병원 / hospital'];
+const PLAN_TYPES = ['귀가 예정','퇴소 예정'];
+const BACK_TYPES = ['귀교(보건)','귀교(개인사유)'];
+
+function latestRec(sid){
+  for (let i = S.leaves.length - 1; i >= 0; i--)
+    if (S.leaves[i].student_id === sid) return S.leaves[i];
+  return null;
+}
+function statusOf(stu){
+  const r = latestRec(stu.id);
+  if (!r || BACK_TYPES.includes(r.rec_type)) return {kr:'입교', cls:'c-in'};
+  const t = r.rec_type;
+  if (t === '퇴소') return {kr:'퇴소', cls:'c-left', rec:r};
+  if (OUT_TYPES.includes(t)) return {kr:t, cls:'c-out', rec:r};
+  if (PLAN_TYPES.includes(t)) return {kr:t, cls:'c-plan', rec:r};
+  return {kr:t, cls:'c-med', rec:r}; // 안정/진료
+}
+const stuName = sid => (S.students.find(s=>s.id===sid)||{}).kr_name || '?';
+const paOf = cls => S.staff.find(x=>x.role==='PA' && String(x.key)===String(cls)) || {};
+const laOf = room => { const f = String(room||'')[0]; return S.staff.find(x=>x.role==='LA' && String(x.key)===f) || {}; };
+
+/* ---------- 초기화 ---------- */
+window.addEventListener('DOMContentLoaded', async () => {
+  if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) { $('setup').style.display='block'; return; }
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) enter(session.user); else $('login').style.display='flex';
+  $('li-btn').onclick = doLogin;
+  $('li-pw').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+});
+async function doLogin(){
+  $('li-err').textContent = '';
+  const { data, error } = await sb.auth.signInWithPassword({ email: $('li-email').value.trim(), password: $('li-pw').value });
+  if (error) { $('li-err').textContent = '로그인 실패: 이메일/비밀번호를 확인하세요.'; return; }
+  enter(data.user);
+}
+async function enter(user){
+  me = user;
+  $('login').style.display='none'; $('app').style.display='block';
+  $('uemail').textContent = user.email;
+  $('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+  document.querySelectorAll('.ntab').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.ntab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); $('v-'+b.dataset.v).classList.add('on');
+  });
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => $(b.dataset.close).classList.remove('on'));
+  bindUI();
+  await loadAll();
+  subscribeRealtime();
+}
+async function loadAll(){
+  const [st, lv, dl, sf] = await Promise.all([
+    sb.from('students').select('*').order('id'),
+    sb.from('leave_records').select('*').order('id'),
+    sb.from('delayed_entries').select('*').order('id'),
+    sb.from('staff').select('*').order('key')
+  ]);
+  if (st.error) { alert('데이터 로드 실패: ' + st.error.message); return; }
+  S.students = st.data||[]; S.leaves = lv.data||[]; S.delayed = dl.data||[]; S.staff = sf.data||[];
+  $('condot').classList.remove('off');
+  renderAll();
+}
+let rtTimer = null;
+function subscribeRealtime(){
+  sb.channel('glps44')
+    .on('postgres_changes', {event:'*', schema:'public'}, () => {
+      clearTimeout(rtTimer); rtTimer = setTimeout(loadAll, 400);
+    })
+    .subscribe(st => { if (st !== 'SUBSCRIBED') $('condot').classList.add('off'); });
+}
+async function audit(action, target, detail){
+  try { await sb.from('audit_log').insert({user_email: me.email, action, target, detail: String(detail||'').slice(0,500)}); } catch(e){}
+}
+function renderAll(){ renderDash(); renderStudents(); renderLeaves(); renderDelayed(); renderRefund(); renderStaff(); fillDatalist(); }
+
+/* ---------- 현황판 ---------- */
+const BOARD_TH = '<tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>담당 PA</th><th>PA 연락처</th><th>층 LA</th><th>LA 연락처</th></tr>';
+function boardRow(stu, r, i){
+  const pa = paOf(stu.class_no), la = laOf(stu.room);
+  return `<tr class="click" onclick="openStudent(${stu.id})"><td>${i+1}</td><td><b>${esc(stu.kr_name)}</b></td><td>${esc(stu.class_no)}</td><td>${esc(stu.room)}</td><td>${esc(r.leave_at)}</td><td>${esc(r.return_at)}</td><td>${esc(r.planned_return)}</td><td>${esc(r.reason)}</td><td>${esc(pa.name||'')}</td><td>${esc(pa.phone||'')}</td><td>${esc(la.name||'')}</td><td>${esc(la.phone||'')}</td></tr>`;
+}
+function renderBoard(elId, cntId, list){
+  $(cntId).textContent = list.length + '명';
+  $(elId).innerHTML = list.length
+    ? `<table><thead>${BOARD_TH}</thead><tbody>${list.map((x,i)=>boardRow(x.stu,x.rec,i)).join('')}</tbody></table>`
+    : '<div class="empty">없음</div>';
+}
+function renderDash(){
+  const withStatus = S.students.map(s => ({stu:s, st:statusOf(s)}));
+  const left = withStatus.filter(x=>x.st.kr==='퇴소');
+  const outH = withStatus.filter(x=>x.st.kr==='귀가(보건)'||x.st.kr==='병원 / hospital');
+  const outP = withStatus.filter(x=>x.st.kr==='귀가(개인사유)');
+  const plan = withStatus.filter(x=>PLAN_TYPES.includes(x.st.kr));
+  const base = S.students.length, enrolled = base-left.length, oncampus = enrolled-outH.length-outP.length;
+  $('d-base').textContent = base; $('d-enrolled').textContent = enrolled;
+  $('d-oncampus').textContent = oncampus; $('d-out').textContent = outH.length+outP.length;
+  $('d-left').textContent = left.length;
+  renderBoard('b-outh','c-outh', outH.map(x=>({stu:x.stu, rec:x.st.rec})));
+  renderBoard('b-outp','c-outp', outP.map(x=>({stu:x.stu, rec:x.st.rec})));
+  renderBoard('b-plan','c-plan', plan.map(x=>({stu:x.stu, rec:x.st.rec})));
+  const dwait = S.delayed.filter(d=>d.status==='입소 예정');
+  $('c-delay').textContent = dwait.length + '명';
+  $('b-delay').innerHTML = dwait.length
+    ? `<table><thead><tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>입소예정일</th><th>사유</th><th>비고</th></tr></thead><tbody>` +
+      dwait.map((d,i)=>{ const s=S.students.find(x=>x.id===d.student_id)||{};
+        return `<tr><td>${i+1}</td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(d.expected_at)}</td><td>${esc(d.reason)}</td><td>${esc(d.note)}</td></tr>`;}).join('') + '</tbody></table>'
+    : '<div class="empty">없음</div>';
+  const classes = [...new Set(S.students.map(s=>s.class_no).filter(v=>v!==''))].sort((a,b)=>Number(a)-Number(b));
+  $('b-class').innerHTML = classes.length
+    ? `<table><thead><tr><th>반</th><th>전체</th><th>재적(퇴소 제외)</th></tr></thead><tbody>` +
+      classes.map(c=>{ const all=withStatus.filter(x=>String(x.stu.class_no)===String(c));
+        return `<tr><td><b>${esc(c)}</b></td><td>${all.length}</td><td>${all.filter(x=>x.st.kr!=='퇴소').length}</td></tr>`;}).join('') + '</tbody></table>'
+    : '<div class="empty">반 미확정 — 학생 명단에서 반을 입력하면 자동 집계됩니다.</div>';
+}
+
+/* ---------- 학생 명단 ---------- */
+function studentFilterList(){
+  const q = $('s-q').value.trim().toLowerCase();
+  const g = $('s-grade').value, gd = $('s-gender').value, stf = $('s-status').value, cf = $('s-class').value;
+  return S.students.filter(s => {
+    const st = statusOf(s);
+    if (q && !(`${s.kr_name} ${s.en_name} ${s.school} ${s.room} ${s.id}`.toLowerCase().includes(q))) return false;
+    if (g && String(s.grade)!==g) return false;
+    if (gd && s.gender!==gd) return false;
+    if (cf && String(s.class_no)!==cf) return false;
+    if (stf==='입교' && st.kr!=='입교') return false;
+    if (stf==='외부(귀가)' && !OUT_TYPES.includes(st.kr)) return false;
+    if (stf==='예정' && !PLAN_TYPES.includes(st.kr)) return false;
+    if (stf==='퇴소' && st.kr!=='퇴소') return false;
+    return true;
+  });
+}
+function renderStudents(){
+  const cs = [...new Set(S.students.map(s=>s.class_no).filter(v=>v!==''))].sort((a,b)=>Number(a)-Number(b));
+  const sel = $('s-class'), cur = sel.value;
+  sel.innerHTML = '<option value="">반 전체</option>' + cs.map(c=>`<option${String(c)===cur?' selected':''}>${esc(c)}</option>`).join('');
+  const list = studentFilterList();
+  $('s-count').textContent = `${list.length}명 / 전체 ${S.students.length}명`;
+  $('s-table').innerHTML = `<table><thead><tr><th>접수번호</th><th>이름</th><th>영문명</th><th>성별</th><th>학년</th><th>반</th><th>호실</th><th>상태</th><th>학교</th><th>보호자1</th></tr></thead><tbody>` +
+    list.map(s => { const st = statusOf(s);
+      const bd = (s.is_dup?'<span class="badge b-dup">동명</span>':'') + (s.sib_group?'<span class="badge b-sib">형제</span>':'') + (s.allergy?'<span class="badge b-alg">알레르기</span>':'');
+      return `<tr class="click" onclick="openStudent(${s.id})"><td>${s.id}</td><td><b>${esc(s.kr_name)}</b>${bd}</td><td>${esc(s.en_name)}</td><td>${esc(s.gender)}</td><td>${esc(s.grade)}</td><td>${esc(s.class_no)}</td><td>${esc(s.room)}</td><td><span class="chip ${st.cls}">${esc(st.kr)}</span></td><td>${esc(s.school)}</td><td>${esc(s.g1_phone)}</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+let curStu = null;
+window.openStudent = function(id){
+  const s = S.students.find(x=>x.id===id); if (!s) return; curStu = s;
+  const st = statusOf(s);
+  const sibs = s.sib_group ? S.students.filter(x=>x.sib_group===s.sib_group && x.id!==s.id) : [];
+  const hist = S.leaves.filter(r=>r.student_id===s.id).sort((a,b)=>b.id-a.id);
+  $('ms-title').innerHTML = `${esc(s.kr_name)} <span class="chip ${st.cls}" style="margin-left:6px">${esc(st.kr)}</span>`;
+  const ro = (l,v) => `<div class="fld"><label>${l}</label><input class="ro" readonly value="${esc(v)}"></div>`;
+  const ed = (l,id,v) => `<div class="fld edit"><label>${l}</label><input id="${id}" value="${esc(v)}"></div>`;
+  $('ms-body').innerHTML =
+    `<div class="grid3">${ro('접수번호',s.id)}${ro('영문명',s.en_name)}${ro('생년월일',s.birth)}
+     ${ro('성별',s.gender)}${ro('학년',s.grade)}${ed('반','ed-class',s.class_no)}
+     ${ed('호실','ed-room',s.room)}${ro('T-SIZE',s.tsize)}${ro('코스',s.course)}</div>
+     <div class="sect">연락처</div>
+     <div class="grid3">${ro('보호자1 ('+(s.g1_rel||'-')+')',s.g1_name)}${ro('연락처1',s.g1_phone)}${ro('집전화',s.home_phone)}
+     ${ro('보호자2 ('+(s.g2_rel||'-')+')',s.g2_name)}${ro('연락처2',s.g2_phone)}${ro('E-mail',s.email)}</div>
+     <div class="grid2" style="margin-top:10px">${ro('학교',s.school+' ('+s.region+')')}${ro('주소',s.address)}</div>
+     ${s.allergy?`<div class="sect">알레르기</div><div style="background:var(--yellow);padding:8px 12px;border-radius:8px;font-weight:600">${esc(s.allergy)}</div>`:''}
+     ${sibs.length?`<div class="sect">형제자매 (같은 보호자 연락처)</div><div>${sibs.map(x=>`<a href="#" onclick="openStudent(${x.id});return false">${esc(x.kr_name)}</a> (${esc(x.room)}호)`).join(' · ')}</div>`:''}
+     ${(s.re_year)?`<div class="note" style="margin-top:8px">재참가: ${esc(s.re_year)} ${esc(s.re_term)}</div>`:''}
+     <div class="sect">비고</div>
+     <div class="grid2">${ed('비고1','ed-memo1',s.memo1)}${ed('비고2','ed-memo2',s.memo2)}</div>
+     <div class="sect">외출외박·퇴소 이력 (${hist.length})</div>
+     ${hist.length?hist.map(r=>`<div class="hist"><b>${esc(r.rec_type)}</b> · ${esc(r.leave_at)} ${r.return_at?('→ 귀교 '+esc(r.return_at)):''} · ${esc(r.reason)} <span class="note">${esc(r.process_note)}</span></div>`).join(''):'<div class="note">기록 없음</div>'}`;
+  $('m-stu').classList.add('on');
+};
+async function saveStudent(){
+  const upd = { class_no: $('ed-class').value.trim(), room: $('ed-room').value.trim(),
+    memo1: $('ed-memo1').value.trim(), memo2: $('ed-memo2').value.trim(), updated_by: me.email };
+  const { error } = await sb.from('students').update(upd).eq('id', curStu.id);
+  if (error) { alert('저장 실패: '+error.message); return; }
+  audit('학생수정', curStu.kr_name, `반=${upd.class_no}, 방=${upd.room}, 비고=${upd.memo1}/${upd.memo2}`);
+  $('m-stu').classList.remove('on'); loadAll();
+}
+
+/* ---------- 외출외박·퇴소 ---------- */
+function renderLeaves(){
+  const f = $('l-filter').value;
+  let list = [...S.leaves].sort((a,b)=>b.id-a.id);
+  if (f==='out') list = list.filter(r=>OUT_TYPES.includes(r.rec_type));
+  else if (f==='plan') list = list.filter(r=>PLAN_TYPES.includes(r.rec_type));
+  else if (f==='퇴소') list = list.filter(r=>r.rec_type==='퇴소');
+  else if (f==='back') list = list.filter(r=>BACK_TYPES.includes(r.rec_type));
+  $('l-table').innerHTML = list.length
+    ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>처리 현황</th><th></th></tr></thead><tbody>` +
+      list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
+        const cls = r.rec_type==='퇴소'?'c-left':OUT_TYPES.includes(r.rec_type)?'c-out':PLAN_TYPES.includes(r.rec_type)?'c-plan':BACK_TYPES.includes(r.rec_type)?'c-in':'c-med';
+        const backBtn = OUT_TYPES.includes(r.rec_type)||PLAN_TYPES.includes(r.rec_type) ? `<button class="btn sm green" onclick="markReturn(${r.id})">귀교</button> ` : '';
+        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(r.leave_at)}</td><td>${esc(r.return_at)}</td><td>${esc(r.planned_return)}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
+          <td>${backBtn}<button class="btn sm ghost" onclick="editRec(${r.id})">수정</button> <button class="btn sm ghost" onclick="delRec(${r.id})">삭제</button></td></tr>`;
+      }).join('') + '</tbody></table>'
+    : '<div class="empty">기록 없음</div>';
+}
+let editingRec = null;
+function openRecModal(rec, presetStu){
+  editingRec = rec;
+  $('mr-title').textContent = rec ? `기록 수정 #${rec.id}` : '외출외박·퇴소 기록 추가';
+  $('mr-student').value = rec ? stuName(rec.student_id) : (presetStu ? presetStu.kr_name : '');
+  $('mr-student').disabled = !!rec;
+  $('mr-type').value = rec ? rec.rec_type : '귀가(보건)';
+  $('mr-leave').value = rec ? rec.leave_at : '';
+  $('mr-return').value = rec ? rec.return_at : '';
+  $('mr-planned').value = rec ? rec.planned_return : '';
+  $('mr-reason').value = rec ? rec.reason : '';
+  $('mr-note').value = rec ? rec.process_note : '';
+  $('m-rec').classList.add('on');
+}
+window.editRec = id => openRecModal(S.leaves.find(r=>r.id===id));
+window.delRec = async id => {
+  const r = S.leaves.find(x=>x.id===id); if(!r) return;
+  if (!confirm(`${stuName(r.student_id)}의 [${r.rec_type}] 기록을 삭제할까요?`)) return;
+  const { error } = await sb.from('leave_records').delete().eq('id', id);
+  if (error) { alert('삭제 실패: '+error.message); return; }
+  audit('기록삭제', stuName(r.student_id), `${r.rec_type} ${r.leave_at}`);
+  loadAll();
+};
+window.markReturn = async id => {
+  const r = S.leaves.find(x=>x.id===id); if(!r) return;
+  const when = prompt(`${stuName(r.student_id)} 귀교일 입력 (예: 1/22(목) 15:00)`, '');
+  if (when === null) return;
+  const newType = r.rec_type.includes('보건') ? '귀교(보건)' : '귀교(개인사유)';
+  const { error } = await sb.from('leave_records').update({rec_type:newType, return_at:when, updated_by:me.email}).eq('id', id);
+  if (error) { alert('실패: '+error.message); return; }
+  audit('귀교처리', stuName(r.student_id), `${r.rec_type}→${newType} ${when}`);
+  loadAll();
+};
+function resolveStudent(input){
+  const t = input.trim(); if (!t) return null;
+  if (/^\d+$/.test(t)) return S.students.find(s=>String(s.id)===t) || null;
+  const name = t.split(' (')[0].trim();
+  return S.students.find(s=>s.kr_name===name) || S.students.find(s=>s.kr_name.startsWith(name)) || null;
+}
+async function saveRec(){
+  const payload = { rec_type: $('mr-type').value, leave_at: $('mr-leave').value.trim(),
+    return_at: $('mr-return').value.trim(), planned_return: $('mr-planned').value.trim(),
+    reason: $('mr-reason').value.trim(), process_note: $('mr-note').value.trim(), updated_by: me.email };
+  let error;
+  if (editingRec) ({ error } = await sb.from('leave_records').update(payload).eq('id', editingRec.id));
+  else {
+    const stu = resolveStudent($('mr-student').value);
+    if (!stu) { alert('학생을 찾을 수 없습니다. 이름(동명이인은 -학교명 포함) 또는 접수번호로 입력하세요.'); return; }
+    payload.student_id = stu.id;
+    ({ error } = await sb.from('leave_records').insert(payload));
+  }
+  if (error) { alert('저장 실패: '+error.message); return; }
+  audit(editingRec?'기록수정':'기록추가', editingRec?stuName(editingRec.student_id):$('mr-student').value, `${payload.rec_type} ${payload.leave_at} ${payload.reason}`);
+  $('m-rec').classList.remove('on'); loadAll();
+}
+
+/* ---------- 지연입소 ---------- */
+function renderDelayed(){
+  const list = [...S.delayed].sort((a,b)=>a.id-b.id);
+  $('dl-table').innerHTML = list.length
+    ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>반</th><th>호실</th><th>입소예정일</th><th>학부모 연락처</th><th>사유</th><th>비고</th><th></th></tr></thead><tbody>` +
+      list.map((d,i) => { const s = S.students.find(x=>x.id===d.student_id)||{};
+        const cls = d.status==='입소 완료'?'c-in':d.status==='취소'?'c-left':'c-plan';
+        return `<tr><td>${i+1}</td><td><span class="chip ${cls}">${esc(d.status)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(d.expected_at)}</td><td>${esc(s.g1_phone||'')}</td><td>${esc(d.reason)}</td><td>${esc(d.note)}</td>
+        <td>${d.status==='입소 예정'?`<button class="btn sm green" onclick="dlDone(${d.id})">입소완료</button> `:''}<button class="btn sm ghost" onclick="dlEdit(${d.id})">수정</button> <button class="btn sm ghost" onclick="dlDel(${d.id})">삭제</button></td></tr>`;
+      }).join('') + '</tbody></table>'
+    : '<div class="empty">지연입소 없음</div>';
+}
+let editingDl = null;
+window.dlDone = async id => {
+  const { error } = await sb.from('delayed_entries').update({status:'입소 완료', updated_by:me.email}).eq('id', id);
+  if (!error) { const d=S.delayed.find(x=>x.id===id); audit('지연입소완료', stuName(d.student_id),''); loadAll(); }
+};
+window.dlEdit = id => { const d = S.delayed.find(x=>x.id===id); if(!d) return; editingDl = d;
+  $('md-student').value = stuName(d.student_id); $('md-student').disabled = true;
+  $('md-status').value = d.status; $('md-expected').value = d.expected_at;
+  $('md-reason').value = d.reason; $('md-note').value = d.note; $('m-dl').classList.add('on'); };
+window.dlDel = async id => {
+  if (!confirm('삭제할까요?')) return;
+  const { error } = await sb.from('delayed_entries').delete().eq('id', id);
+  if (!error) loadAll();
+};
+async function saveDl(){
+  const payload = { status: $('md-status').value, expected_at: $('md-expected').value.trim(),
+    reason: $('md-reason').value.trim(), note: $('md-note').value.trim(), updated_by: me.email };
+  let error;
+  if (editingDl) ({ error } = await sb.from('delayed_entries').update(payload).eq('id', editingDl.id));
+  else {
+    const stu = resolveStudent($('md-student').value);
+    if (!stu) { alert('학생을 찾을 수 없습니다.'); return; }
+    payload.student_id = stu.id;
+    ({ error } = await sb.from('delayed_entries').insert(payload));
+  }
+  if (error) { alert('저장 실패: '+error.message); return; }
+  audit(editingDl?'지연입소수정':'지연입소추가', $('md-student').value, payload.expected_at);
+  $('m-dl').classList.remove('on'); loadAll();
+}
+
+/* ---------- 정산(법인) ---------- */
+function renderRefund(){
+  const list = S.leaves.filter(r=>!PLAN_TYPES.includes(r.rec_type)).sort((a,b)=>b.id-a.id);
+  $('r-table').innerHTML = list.length
+    ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>접수번호</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>사유</th><th>환불일수</th><th>환불비고</th></tr></thead><tbody>` +
+      list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
+        const cls = r.rec_type==='퇴소'?'c-left':OUT_TYPES.includes(r.rec_type)?'c-out':'c-in';
+        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${s.id||''}</td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(r.leave_at)}</td><td>${esc(r.return_at)}</td><td>${esc(r.reason)}</td>
+        <td><input style="width:70px;background:var(--yellow)" value="${esc(r.refund_days)}" onchange="saveRefund(${r.id},'refund_days',this.value)"></td>
+        <td><input style="width:180px;background:var(--yellow)" value="${esc(r.refund_note)}" onchange="saveRefund(${r.id},'refund_note',this.value)"></td></tr>`;
+      }).join('') + '</tbody></table>'
+    : '<div class="empty">기록 없음</div>';
+}
+window.saveRefund = async (id, field, val) => {
+  const { error } = await sb.from('leave_records').update({[field]: val, updated_by: me.email}).eq('id', id);
+  if (error) alert('저장 실패: '+error.message);
+  else { const r=S.leaves.find(x=>x.id===id); audit('환불기록', stuName(r.student_id), `${field}=${val}`);
+    const i=S.leaves.findIndex(x=>x.id===id); if(i>-1) S.leaves[i][field]=val; }
+};
+
+/* ---------- 설정: PA/LA + 이력 ---------- */
+function staffTable(role, elId){
+  const list = S.staff.filter(x=>x.role===role).sort((a,b)=>Number(a.key)-Number(b.key));
+  const keyLabel = role==='PA'?'반':'층';
+  $(elId).innerHTML = `<table><thead><tr><th>${keyLabel}</th><th>이름</th><th>연락처</th><th></th></tr></thead><tbody>` +
+    list.map(x=>`<tr><td>${esc(x.key)}</td>
+      <td><input style="width:110px" value="${esc(x.name)}" onchange="staffSave(${x.id},'name',this.value)"></td>
+      <td><input style="width:140px" value="${esc(x.phone)}" onchange="staffSave(${x.id},'phone',this.value)"></td>
+      <td><button class="btn sm ghost" onclick="staffDel(${x.id})">삭제</button></td></tr>`).join('') +
+    `<tr><td><input id="new-${role}-key" style="width:50px" placeholder="${keyLabel}"></td>
+     <td><input id="new-${role}-name" style="width:110px" placeholder="이름"></td>
+     <td><input id="new-${role}-phone" style="width:140px" placeholder="연락처"></td>
+     <td><button class="btn sm" onclick="staffAdd('${role}')">추가</button></td></tr></tbody></table>`;
+}
+function renderStaff(){ staffTable('PA','pa-table'); staffTable('LA','la-table'); renderAudit(); }
+window.staffSave = async (id, f, v) => { await sb.from('staff').update({[f]:v}).eq('id',id); };
+window.staffDel = async id => { if(confirm('삭제?')){ await sb.from('staff').delete().eq('id',id); loadAll(); } };
+window.staffAdd = async role => {
+  const key = $(`new-${role}-key`).value.trim(), name = $(`new-${role}-name`).value.trim(), phone = $(`new-${role}-phone`).value.trim();
+  if (!key) return alert(role==='PA'?'반 번호를 입력하세요':'층 번호를 입력하세요');
+  const { error } = await sb.from('staff').insert({role, key, name, phone});
+  if (error) alert('추가 실패(중복?): '+error.message); else loadAll();
+};
+async function renderAudit(){
+  const { data } = await sb.from('audit_log').select('*').order('id',{ascending:false}).limit(200);
+  $('au-table').innerHTML = (data&&data.length)
+    ? `<table><thead><tr><th>시각</th><th>사용자</th><th>동작</th><th>대상</th><th>내용</th></tr></thead><tbody>` +
+      data.map(a=>`<tr><td>${new Date(a.at).toLocaleString('ko-KR')}</td><td>${esc(a.user_email)}</td><td>${esc(a.action)}</td><td>${esc(a.target)}</td><td>${esc(a.detail)}</td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty">이력 없음</div>';
+}
+
+/* ---------- CSV ---------- */
+function downloadCSV(name, headers, rows){
+  const csv = '﻿' + [headers, ...rows].map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = name; a.click();
+}
+function csvStudents(){
+  const list = studentFilterList();
+  downloadCSV(`GLPS44_학생명단_${new Date().toISOString().slice(0,10)}.csv`,
+    ['접수번호','이름','영문명','성별','학년','반','호실','상태','학교','보호자1','연락처1','알레르기'],
+    list.map(s=>{const st=statusOf(s);return [s.id,s.kr_name,s.en_name,s.gender,s.grade,s.class_no,s.room,st.kr,s.school,s.g1_name,s.g1_phone,s.allergy];}));
+}
+function csvLeaves(){
+  downloadCSV(`GLPS44_외출외박퇴소_${new Date().toISOString().slice(0,10)}.csv`,
+    ['번호','상태','이름','접수번호','반','호실','귀가(퇴소)일','귀교일','귀교예정일','사유','처리현황','환불일수','환불비고'],
+    [...S.leaves].sort((a,b)=>a.id-b.id).map(r=>{const s=S.students.find(x=>x.id===r.student_id)||{};
+      return [r.id,r.rec_type,s.kr_name,s.id,s.class_no,s.room,r.leave_at,r.return_at,r.planned_return,r.reason,r.process_note,r.refund_days,r.refund_note];}));
+}
+
+/* ---------- 공통 바인딩 ---------- */
+function fillDatalist(){
+  $('stu-list').innerHTML = S.students.map(s=>`<option value="${esc(s.kr_name)}">${s.id} · ${esc(s.grade)}학년 ${esc(s.gender)} · ${esc(s.room)}호</option>`).join('');
+}
+function bindUI(){
+  ['s-q','s-grade','s-gender','s-status','s-class'].forEach(id=>{
+    $(id).addEventListener('input', renderStudents); $(id).addEventListener('change', renderStudents);
+  });
+  $('l-filter').addEventListener('change', renderLeaves);
+  $('l-add').onclick = () => { editingRec = null; openRecModal(null); };
+  $('mr-save').onclick = saveRec;
+  $('ms-save').onclick = saveStudent;
+  $('ms-leave').onclick = () => { $('m-stu').classList.remove('on'); editingRec = null; openRecModal(null, curStu); };
+  $('dl-add').onclick = () => { editingDl = null; $('md-student').value=''; $('md-student').disabled=false;
+    $('md-status').value='입소 예정'; $('md-expected').value=''; $('md-reason').value=''; $('md-note').value=''; $('m-dl').classList.add('on'); };
+  $('md-save').onclick = saveDl;
+  $('s-csv').onclick = csvStudents;
+  $('l-csv').onclick = csvLeaves;
+  $('au-refresh').onclick = renderAudit;
+  document.querySelectorAll('.mback').forEach(m => m.addEventListener('click', e => { if (e.target===m) m.classList.remove('on'); }));
+}
+</script>
+</body>
+</html>
