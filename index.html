@@ -148,7 +148,8 @@ tr.click{cursor:pointer}
 <nav><div class="nwrap">
   <button class="ntab on" data-v="dash">현황판</button>
   <button class="ntab" data-v="students">학생 명단</button>
-  <button class="ntab" data-v="leaves">외출외박·퇴소</button>
+  <button class="ntab" data-v="leaves">외출외박</button>
+  <button class="ntab" data-v="exits">퇴소</button>
   <button class="ntab" data-v="delayed">지연입소</button>
   <button class="ntab" data-v="refund">정산(법인)</button>
   <button class="ntab" data-v="settings">설정</button>
@@ -192,15 +193,28 @@ tr.click{cursor:pointer}
 <div class="view" id="v-leaves">
   <div class="tools">
     <select id="l-filter">
-      <option value="">전체 기록</option><option value="out">현재 외부</option><option value="plan">예정</option>
-      <option value="퇴소">퇴소</option><option value="back">귀교 완료</option>
+      <option value="">전체 기록</option><option value="out">현재 외부</option><option value="plan">귀가 예정</option>
+      <option value="back">귀교 완료</option>
     </select>
     <span style="flex:1"></span>
     <button class="btn ghost sm" id="l-csv">CSV 내보내기</button>
-    <button class="btn sm" id="l-add">+ 기록 추가</button>
+    <button class="btn sm" id="l-add">+ 외출외박 기록</button>
   </div>
   <div class="panel"><div class="pbody" id="l-table"></div></div>
-  <p class="note">귀교 시 [귀교] 버튼 → 귀교일 입력만 하면 끝. 환불일수·비고는 정산 탭에서 법인이 기록.</p>
+  <p class="note">귀교 시 [귀교] 버튼 → 귀교일 입력만 하면 끝. 외출외박은 정산과 무관합니다. 퇴소는 [퇴소] 탭에서.</p>
+</div>
+
+<div class="view" id="v-exits">
+  <div class="tools">
+    <select id="ex-filter">
+      <option value="">전체</option><option value="퇴소 예정">퇴소 예정</option><option value="퇴소">퇴소</option>
+    </select>
+    <span style="flex:1"></span>
+    <button class="btn ghost sm" id="ex-csv">CSV 내보내기</button>
+    <button class="btn sm" id="ex-add">+ 퇴소 기록</button>
+  </div>
+  <div class="panel"><div class="pbody" id="ex-table"></div></div>
+  <p class="note">여기 작성된 퇴소 기록만 정산(법인) 탭에 연동됩니다. 퇴소 예정은 [퇴소 확정] 버튼으로 확정 처리.</p>
 </div>
 
 <div class="view" id="v-delayed">
@@ -209,7 +223,7 @@ tr.click{cursor:pointer}
 </div>
 
 <div class="view" id="v-refund">
-  <p class="note" style="margin-bottom:10px">퇴소·귀가 기록의 환불 정보(법인 기록란). 환불일수·비고 칸을 수정하면 자동 저장됩니다.</p>
+  <p class="note" style="margin-bottom:10px">퇴소 탭에 작성된 기록만 표시됩니다(외출외박 무관). 환불일수·비고 칸은 수정하면 자동 저장.</p>
   <div class="panel"><div class="pbody" id="r-table"></div></div>
 </div>
 
@@ -230,6 +244,7 @@ tr.click{cursor:pointer}
   <div class="mhead"><h3 id="ms-title">학생 상세</h3><button class="mx" data-close="m-stu">×</button></div>
   <div class="mbody" id="ms-body"></div>
   <div class="mfoot">
+    <button class="btn ghost" id="ms-exit">퇴소 등록</button>
     <button class="btn ghost" id="ms-leave">외출외박 등록</button>
     <button class="btn" id="ms-save">저장</button>
   </div>
@@ -241,11 +256,7 @@ tr.click{cursor:pointer}
   <div class="mbody">
     <div class="grid2">
       <div class="fld edit"><label>학생 (이름 또는 접수번호)</label><input id="mr-student" list="stu-list" placeholder="예: 이정호-예천초"><datalist id="stu-list"></datalist></div>
-      <div class="fld edit"><label>상태</label><select id="mr-type">
-        <option>귀가(보건)</option><option>귀가(개인사유)</option><option>귀가 예정</option><option>퇴소 예정</option>
-        <option>퇴소</option><option>귀교(보건)</option><option>귀교(개인사유)</option>
-        <option>안정 / bedrest</option><option>진료 / treatment</option><option>병원 / hospital</option>
-      </select></div>
+      <div class="fld edit"><label>상태</label><select id="mr-type"></select></div>
       <div class="fld edit"><label>귀가(퇴소)일</label><input id="mr-leave" placeholder="예: 1/18(일) 19:25"></div>
       <div class="fld edit"><label>귀교일</label><input id="mr-return" placeholder="귀교 후 입력"></div>
       <div class="fld edit"><label>귀교예정일(신청일)</label><input id="mr-planned" placeholder="예: 1/22(목) 19:00"></div>
@@ -288,6 +299,7 @@ let S = { students: [], leaves: [], delayed: [], staff: [] };
 const OUT_TYPES = ['귀가(보건)','귀가(개인사유)','병원 / hospital'];
 const PLAN_TYPES = ['귀가 예정','퇴소 예정'];
 const BACK_TYPES = ['귀교(보건)','귀교(개인사유)'];
+const EXIT_TYPES = ['퇴소','퇴소 예정'];
 
 function latestRec(sid){
   for (let i = S.leaves.length - 1; i >= 0; i--)
@@ -360,7 +372,7 @@ function subscribeRealtime(){
 async function audit(action, target, detail){
   try { await sb.from('audit_log').insert({user_email: me.email, action, target, detail: String(detail||'').slice(0,500)}); } catch(e){}
 }
-function renderAll(){ renderDash(); renderStudents(); renderLeaves(); renderDelayed(); renderRefund(); renderStaff(); fillDatalist(); }
+function renderAll(){ renderDash(); renderStudents(); renderLeaves(); renderExits(); renderDelayed(); renderRefund(); renderStaff(); fillDatalist(); }
 
 /* ---------- 현황판 ---------- */
 const BOARD_TH = '<tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>담당 PA</th><th>PA 연락처</th><th>층 LA</th><th>LA 연락처</th></tr>';
@@ -469,28 +481,54 @@ async function saveStudent(){
 /* ---------- 외출외박·퇴소 ---------- */
 function renderLeaves(){
   const f = $('l-filter').value;
-  let list = [...S.leaves].sort((a,b)=>b.id-a.id);
+  let list = [...S.leaves].filter(r=>!EXIT_TYPES.includes(r.rec_type)).sort((a,b)=>b.id-a.id);
   if (f==='out') list = list.filter(r=>OUT_TYPES.includes(r.rec_type));
-  else if (f==='plan') list = list.filter(r=>PLAN_TYPES.includes(r.rec_type));
-  else if (f==='퇴소') list = list.filter(r=>r.rec_type==='퇴소');
+  else if (f==='plan') list = list.filter(r=>r.rec_type==='귀가 예정');
   else if (f==='back') list = list.filter(r=>BACK_TYPES.includes(r.rec_type));
   $('l-table').innerHTML = list.length
     ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>처리 현황</th><th></th></tr></thead><tbody>` +
       list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
         const cls = r.rec_type==='퇴소'?'c-left':OUT_TYPES.includes(r.rec_type)?'c-out':PLAN_TYPES.includes(r.rec_type)?'c-plan':BACK_TYPES.includes(r.rec_type)?'c-in':'c-med';
-        const backBtn = OUT_TYPES.includes(r.rec_type)||PLAN_TYPES.includes(r.rec_type) ? `<button class="btn sm green" onclick="markReturn(${r.id})">귀교</button> ` : '';
+        const backBtn = (r.rec_type==='귀가(보건)'||r.rec_type==='귀가(개인사유)') ? `<button class="btn sm green" onclick="markReturn(${r.id})">귀교</button> ` : '';
         return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(r.leave_at)}</td><td>${esc(r.return_at)}</td><td>${esc(r.planned_return)}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
           <td>${backBtn}<button class="btn sm ghost" onclick="editRec(${r.id})">수정</button> <button class="btn sm ghost" onclick="delRec(${r.id})">삭제</button></td></tr>`;
       }).join('') + '</tbody></table>'
     : '<div class="empty">기록 없음</div>';
 }
+function renderExits(){
+  const f = $('ex-filter').value;
+  let list = S.leaves.filter(r=>EXIT_TYPES.includes(r.rec_type)).sort((a,b)=>b.id-a.id);
+  if (f) list = list.filter(r=>r.rec_type===f);
+  $('ex-table').innerHTML = list.length
+    ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>반</th><th>호실</th><th>퇴소일</th><th>사유</th><th>처리 현황</th><th></th></tr></thead><tbody>` +
+      list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
+        const cls = r.rec_type==='퇴소'?'c-left':'c-plan';
+        const confirmBtn = r.rec_type==='퇴소 예정' ? `<button class="btn sm warn" onclick="markExit(${r.id})">퇴소 확정</button> ` : '';
+        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(r.leave_at)}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
+          <td>${confirmBtn}<button class="btn sm ghost" onclick="editRec(${r.id})">수정</button> <button class="btn sm ghost" onclick="delRec(${r.id})">삭제</button></td></tr>`;
+      }).join('') + '</tbody></table>'
+    : '<div class="empty">퇴소 기록 없음</div>';
+}
+window.markExit = async id => {
+  const r = S.leaves.find(x=>x.id===id); if(!r) return;
+  if (!confirm(`${stuName(r.student_id)} 퇴소 확정 처리할까요?`)) return;
+  const { error } = await sb.from('leave_records').update({rec_type:'퇴소', updated_by:me.email}).eq('id', id);
+  if (error) { alert('실패: '+error.message); return; }
+  audit('퇴소확정', stuName(r.student_id), r.leave_at);
+  loadAll();
+};
 let editingRec = null;
-function openRecModal(rec, presetStu){
+const LEAVE_OPTS = ['귀가(보건)','귀가(개인사유)','귀가 예정','귀교(보건)','귀교(개인사유)','안정 / bedrest','진료 / treatment','병원 / hospital'];
+const EXIT_OPTS = ['퇴소 예정','퇴소'];
+function openRecModal(rec, presetStu, mode){
   editingRec = rec;
-  $('mr-title').textContent = rec ? `기록 수정 #${rec.id}` : '외출외박·퇴소 기록 추가';
+  if (rec) mode = EXIT_TYPES.includes(rec.rec_type) ? 'exit' : 'leave';
+  const opts = mode==='exit' ? EXIT_OPTS : LEAVE_OPTS;
+  $('mr-type').innerHTML = opts.map(o=>`<option>${o}</option>`).join('');
+  $('mr-title').textContent = rec ? `기록 수정 #${rec.id}` : (mode==='exit' ? '퇴소 기록 추가' : '외출외박 기록 추가');
   $('mr-student').value = rec ? stuName(rec.student_id) : (presetStu ? presetStu.kr_name : '');
   $('mr-student').disabled = !!rec;
-  $('mr-type').value = rec ? rec.rec_type : '귀가(보건)';
+  $('mr-type').value = rec ? rec.rec_type : opts[0];
   $('mr-leave').value = rec ? rec.leave_at : '';
   $('mr-return').value = rec ? rec.return_at : '';
   $('mr-planned').value = rec ? rec.planned_return : '';
@@ -584,7 +622,7 @@ async function saveDl(){
 
 /* ---------- 정산(법인) ---------- */
 function renderRefund(){
-  const list = S.leaves.filter(r=>!PLAN_TYPES.includes(r.rec_type)).sort((a,b)=>b.id-a.id);
+  const list = S.leaves.filter(r=>r.rec_type==='퇴소').sort((a,b)=>b.id-a.id);
   $('r-table').innerHTML = list.length
     ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>접수번호</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>사유</th><th>환불일수</th><th>환불비고</th></tr></thead><tbody>` +
       list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
@@ -647,10 +685,16 @@ function csvStudents(){
     list.map(s=>{const st=statusOf(s);return [s.id,s.kr_name,s.en_name,s.gender,s.grade,s.class_no,s.room,st.kr,s.school,s.g1_name,s.g1_phone,s.allergy];}));
 }
 function csvLeaves(){
-  downloadCSV(`GLPS44_외출외박퇴소_${new Date().toISOString().slice(0,10)}.csv`,
-    ['번호','상태','이름','접수번호','반','호실','귀가(퇴소)일','귀교일','귀교예정일','사유','처리현황','환불일수','환불비고'],
-    [...S.leaves].sort((a,b)=>a.id-b.id).map(r=>{const s=S.students.find(x=>x.id===r.student_id)||{};
-      return [r.id,r.rec_type,s.kr_name,s.id,s.class_no,s.room,r.leave_at,r.return_at,r.planned_return,r.reason,r.process_note,r.refund_days,r.refund_note];}));
+  downloadCSV(`GLPS44_외출외박_${new Date().toISOString().slice(0,10)}.csv`,
+    ['번호','상태','이름','접수번호','반','호실','귀가일','귀교일','귀교예정일','사유','처리현황'],
+    S.leaves.filter(r=>!EXIT_TYPES.includes(r.rec_type)).sort((a,b)=>a.id-b.id).map(r=>{const s=S.students.find(x=>x.id===r.student_id)||{};
+      return [r.id,r.rec_type,s.kr_name,s.id,s.class_no,s.room,r.leave_at,r.return_at,r.planned_return,r.reason,r.process_note];}));
+}
+function csvExits(){
+  downloadCSV(`GLPS44_퇴소_${new Date().toISOString().slice(0,10)}.csv`,
+    ['번호','상태','이름','접수번호','반','호실','퇴소일','사유','처리현황','환불일수','환불비고'],
+    S.leaves.filter(r=>EXIT_TYPES.includes(r.rec_type)).sort((a,b)=>a.id-b.id).map(r=>{const s=S.students.find(x=>x.id===r.student_id)||{};
+      return [r.id,r.rec_type,s.kr_name,s.id,s.class_no,s.room,r.leave_at,r.reason,r.process_note,r.refund_days,r.refund_note];}));
 }
 
 /* ---------- 공통 바인딩 ---------- */
@@ -662,15 +706,19 @@ function bindUI(){
     $(id).addEventListener('input', renderStudents); $(id).addEventListener('change', renderStudents);
   });
   $('l-filter').addEventListener('change', renderLeaves);
-  $('l-add').onclick = () => { editingRec = null; openRecModal(null); };
+  $('ex-filter').addEventListener('change', renderExits);
+  $('l-add').onclick = () => { editingRec = null; openRecModal(null, null, 'leave'); };
+  $('ex-add').onclick = () => { editingRec = null; openRecModal(null, null, 'exit'); };
   $('mr-save').onclick = saveRec;
   $('ms-save').onclick = saveStudent;
-  $('ms-leave').onclick = () => { $('m-stu').classList.remove('on'); editingRec = null; openRecModal(null, curStu); };
+  $('ms-leave').onclick = () => { $('m-stu').classList.remove('on'); editingRec = null; openRecModal(null, curStu, 'leave'); };
+  $('ms-exit').onclick = () => { $('m-stu').classList.remove('on'); editingRec = null; openRecModal(null, curStu, 'exit'); };
   $('dl-add').onclick = () => { editingDl = null; $('md-student').value=''; $('md-student').disabled=false;
     $('md-status').value='입소 예정'; $('md-expected').value=''; $('md-reason').value=''; $('md-note').value=''; $('m-dl').classList.add('on'); };
   $('md-save').onclick = saveDl;
   $('s-csv').onclick = csvStudents;
   $('l-csv').onclick = csvLeaves;
+  $('ex-csv').onclick = csvExits;
   $('au-refresh').onclick = renderAudit;
   document.querySelectorAll('.mback').forEach(m => m.addEventListener('click', e => { if (e.target===m) m.classList.remove('on'); }));
 }
