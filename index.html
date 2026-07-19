@@ -257,13 +257,13 @@ tr.click{cursor:pointer}
     <div class="grid2">
       <div class="fld edit"><label>학생 (이름 또는 접수번호)</label><input id="mr-student" list="stu-list" placeholder="예: 이정호-예천초"><datalist id="stu-list"></datalist></div>
       <div class="fld edit"><label>상태</label><select id="mr-type"></select></div>
-      <div class="fld edit"><label>귀가(퇴소) 날짜·시간</label><div style="display:flex;gap:6px"><input type="date" id="mr-leave-d" style="flex:1"><input type="time" id="mr-leave-t" style="width:105px"></div></div>
-      <div class="fld edit"><label>귀교 날짜·시간 (귀교 후)</label><div style="display:flex;gap:6px"><input type="date" id="mr-return-d" style="flex:1"><input type="time" id="mr-return-t" style="width:105px"></div></div>
-      <div class="fld edit"><label>귀교예정(신청) 날짜·시간</label><div style="display:flex;gap:6px"><input type="date" id="mr-planned-d" style="flex:1"><input type="time" id="mr-planned-t" style="width:105px"></div></div>
+      <div class="fld edit"><label>귀가(퇴소) 날짜·시간</label><div style="display:flex;gap:6px"><input type="date" id="mr-leave-d" style="flex:1"><input id="mr-leave-t" placeholder="19:30" inputmode="numeric" style="width:105px"></div></div>
+      <div class="fld edit"><label>귀교 날짜·시간 (귀교 후)</label><div style="display:flex;gap:6px"><input type="date" id="mr-return-d" style="flex:1"><input id="mr-return-t" placeholder="15:00" inputmode="numeric" style="width:105px"></div></div>
+      <div class="fld edit"><label>귀교예정(신청) 날짜·시간</label><div style="display:flex;gap:6px"><input type="date" id="mr-planned-d" style="flex:1"><input id="mr-planned-t" placeholder="15:00" inputmode="numeric" style="width:105px"></div></div>
       <div class="fld edit"><label>사유</label><input id="mr-reason" placeholder="예: 고열, 졸업식"></div>
     </div>
     <div class="fld edit" style="margin-top:10px"><label>처리 현황</label><input id="mr-note" placeholder="예: 보호자 인계 완료"></div>
-    <p class="note" style="margin-top:8px">출발 시각이 지나기 전까지는 '현재 학생수'에 포함됩니다(출발 전 상태). 시간을 비우면 그날 0시 기준.</p>
+    <p class="note" style="margin-top:8px">출발 시각이 지나기 전까지는 '현재 학생수'에 포함됩니다(출발 전 상태). 시간은 24시간제(예: 19:30, 1930도 인식). 비우면 그날 0시 기준.</p>
   </div>
   <div class="mfoot"><button class="btn" id="mr-save">저장</button></div>
 </div></div>
@@ -316,6 +316,14 @@ function hasDeparted(r){ const dt = parseDT(r.leave_at); return !dt || dt <= new
 function nowDT(){ const n=new Date(),p=x=>String(x).padStart(2,'0'); return `${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`; }
 function splitDT(v){ const m=String(v||'').match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?/); return m?{d:m[1],t:m[2]||''}:{d:'',t:''}; }
 function joinDT(d,t){ return d ? (t?`${d} ${t}`:d) : ''; }
+function normTime(v){
+  v = String(v||'').trim(); if (!v) return '';
+  const m = v.match(/^(\d{1,2})[:시]?\s*(\d{0,2})분?$/) || v.match(/^(\d{2})(\d{2})$/);
+  if (!m) return null;
+  const h = +m[1], mi = (m[2]===''||m[2]===undefined) ? 0 : +m[2];
+  if (h>23 || mi>59) return null;
+  return `${String(h).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
+}
 
 function latestRec(sid){
   for (let i = S.leaves.length - 1; i >= 0; i--)
@@ -585,10 +593,12 @@ function resolveStudent(input){
   return S.students.find(s=>s.kr_name===name) || S.students.find(s=>s.kr_name.startsWith(name)) || null;
 }
 async function saveRec(){
+  const lt = normTime($('mr-leave-t').value), rt = normTime($('mr-return-t').value), pt = normTime($('mr-planned-t').value);
+  if (lt===null || rt===null || pt===null) { alert('시간은 24시간제 HH:MM으로 입력하세요 (예: 19:30)'); return; }
   const payload = { rec_type: $('mr-type').value,
-    leave_at: joinDT($('mr-leave-d').value, $('mr-leave-t').value),
-    return_at: joinDT($('mr-return-d').value, $('mr-return-t').value),
-    planned_return: joinDT($('mr-planned-d').value, $('mr-planned-t').value),
+    leave_at: joinDT($('mr-leave-d').value, lt),
+    return_at: joinDT($('mr-return-d').value, rt),
+    planned_return: joinDT($('mr-planned-d').value, pt),
     reason: $('mr-reason').value.trim(), process_note: $('mr-note').value.trim(), updated_by: me.email };
   let error;
   if (editingRec) ({ error } = await sb.from('leave_records').update(payload).eq('id', editingRec.id));
@@ -692,7 +702,7 @@ async function renderAudit(){
   const { data } = await sb.from('audit_log').select('*').order('id',{ascending:false}).limit(200);
   $('au-table').innerHTML = (data&&data.length)
     ? `<table><thead><tr><th>시각</th><th>사용자</th><th>동작</th><th>대상</th><th>내용</th></tr></thead><tbody>` +
-      data.map(a=>`<tr><td>${new Date(a.at).toLocaleString('ko-KR')}</td><td>${esc(a.user_email)}</td><td>${esc(a.action)}</td><td>${esc(a.target)}</td><td>${esc(a.detail)}</td></tr>`).join('') + '</tbody></table>'
+      data.map(a=>`<tr><td>${new Date(a.at).toLocaleString('ko-KR',{hour12:false})}</td><td>${esc(a.user_email)}</td><td>${esc(a.action)}</td><td>${esc(a.target)}</td><td>${esc(a.detail)}</td></tr>`).join('') + '</tbody></table>'
     : '<div class="empty">이력 없음</div>';
 }
 
