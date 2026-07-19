@@ -160,7 +160,7 @@ tr.click{cursor:pointer}
   <div class="cards">
     <div class="scard"><div class="k">기준인원</div><div class="v" id="d-base">-</div></div>
     <div class="scard"><div class="k">재적인원 <small>(기준-퇴소)</small></div><div class="v" id="d-enrolled">-</div></div>
-    <div class="scard"><div class="k">입소인원 <small>(현재 학교에 있음)</small></div><div class="v" id="d-oncampus">-</div></div>
+    <div class="scard"><div class="k">현재 학생수 <small>(재적-외부-지연입소)</small></div><div class="v" id="d-oncampus">-</div></div>
     <div class="scard hl"><div class="k">현재 외부</div><div class="v" id="d-out">-</div></div>
     <div class="scard"><div class="k">퇴소</div><div class="v" id="d-left">-</div></div>
   </div>
@@ -168,7 +168,7 @@ tr.click{cursor:pointer}
     <div class="pbody" id="b-outh"></div></div>
   <div class="panel"><div class="phead"><h2>현재 외부 학생 — 귀가(개인사유)</h2><span class="cnt" id="c-outp">0명</span></div>
     <div class="pbody" id="b-outp"></div></div>
-  <div class="panel"><div class="phead"><h2>귀가·퇴소 예정</h2><span class="cnt" id="c-plan">0명</span></div>
+  <div class="panel"><div class="phead"><h2>귀가·퇴소 예정 (출발 전 포함)</h2><span class="cnt" id="c-plan">0명</span></div>
     <div class="pbody" id="b-plan"></div></div>
   <div class="panel"><div class="phead"><h2>지연입소 대기</h2><span class="cnt" id="c-delay">0명</span></div>
     <div class="pbody" id="b-delay"></div></div>
@@ -257,12 +257,13 @@ tr.click{cursor:pointer}
     <div class="grid2">
       <div class="fld edit"><label>학생 (이름 또는 접수번호)</label><input id="mr-student" list="stu-list" placeholder="예: 이정호-예천초"><datalist id="stu-list"></datalist></div>
       <div class="fld edit"><label>상태</label><select id="mr-type"></select></div>
-      <div class="fld edit"><label>귀가(퇴소)일</label><input id="mr-leave" placeholder="예: 1/18(일) 19:25"></div>
-      <div class="fld edit"><label>귀교일</label><input id="mr-return" placeholder="귀교 후 입력"></div>
-      <div class="fld edit"><label>귀교예정일(신청일)</label><input id="mr-planned" placeholder="예: 1/22(목) 19:00"></div>
+      <div class="fld edit"><label>귀가(퇴소) 날짜·시간</label><div style="display:flex;gap:6px"><input type="date" id="mr-leave-d" style="flex:1"><input type="time" id="mr-leave-t" style="width:105px"></div></div>
+      <div class="fld edit"><label>귀교 날짜·시간 (귀교 후)</label><div style="display:flex;gap:6px"><input type="date" id="mr-return-d" style="flex:1"><input type="time" id="mr-return-t" style="width:105px"></div></div>
+      <div class="fld edit"><label>귀교예정(신청) 날짜·시간</label><div style="display:flex;gap:6px"><input type="date" id="mr-planned-d" style="flex:1"><input type="time" id="mr-planned-t" style="width:105px"></div></div>
       <div class="fld edit"><label>사유</label><input id="mr-reason" placeholder="예: 고열, 졸업식"></div>
     </div>
     <div class="fld edit" style="margin-top:10px"><label>처리 현황</label><input id="mr-note" placeholder="예: 보호자 인계 완료"></div>
+    <p class="note" style="margin-top:8px">출발 시각이 지나기 전까지는 '현재 학생수'에 포함됩니다(출발 전 상태). 시간을 비우면 그날 0시 기준.</p>
   </div>
   <div class="mfoot"><button class="btn" id="mr-save">저장</button></div>
 </div></div>
@@ -300,6 +301,21 @@ const OUT_TYPES = ['귀가(보건)','귀가(개인사유)','병원 / hospital'];
 const PLAN_TYPES = ['귀가 예정','퇴소 예정'];
 const BACK_TYPES = ['귀교(보건)','귀교(개인사유)'];
 const EXIT_TYPES = ['퇴소','퇴소 예정'];
+function parseDT(v){
+  if (!v) return null;
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  return new Date(+m[1], m[2]-1, +m[3], m[4]?+m[4]:0, m[5]?+m[5]:0);
+}
+function fmtDT(v){
+  const dt = parseDT(v); if (!dt) return v || '';
+  const hm = String(v).match(/[ T](\d{1,2}):(\d{2})/);
+  return `${dt.getMonth()+1}/${dt.getDate()}(${'일월화수목금토'[dt.getDay()]})` + (hm ? ` ${hm[1].padStart(2,'0')}:${hm[2]}` : '');
+}
+function hasDeparted(r){ const dt = parseDT(r.leave_at); return !dt || dt <= new Date(); }
+function nowDT(){ const n=new Date(),p=x=>String(x).padStart(2,'0'); return `${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`; }
+function splitDT(v){ const m=String(v||'').match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?/); return m?{d:m[1],t:m[2]||''}:{d:'',t:''}; }
+function joinDT(d,t){ return d ? (t?`${d} ${t}`:d) : ''; }
 
 function latestRec(sid){
   for (let i = S.leaves.length - 1; i >= 0; i--)
@@ -307,11 +323,16 @@ function latestRec(sid){
   return null;
 }
 function statusOf(stu){
+  const dl = S.delayed.find(d=>d.student_id===stu.id && d.status==='입소 예정');
+  if (dl) return {kr:'지연입소', cls:'c-med'};
   const r = latestRec(stu.id);
   if (!r || BACK_TYPES.includes(r.rec_type)) return {kr:'입교', cls:'c-in'};
   const t = r.rec_type;
   if (t === '퇴소') return {kr:'퇴소', cls:'c-left', rec:r};
-  if (OUT_TYPES.includes(t)) return {kr:t, cls:'c-out', rec:r};
+  if (OUT_TYPES.includes(t)) {
+    if ((t==='귀가(보건)'||t==='귀가(개인사유)') && !hasDeparted(r)) return {kr:'출발 전', cls:'c-plan', rec:r};
+    return {kr:t, cls:'c-out', rec:r};
+  }
   if (PLAN_TYPES.includes(t)) return {kr:t, cls:'c-plan', rec:r};
   return {kr:t, cls:'c-med', rec:r}; // 안정/진료
 }
@@ -348,6 +369,7 @@ async function enter(user){
   bindUI();
   await loadAll();
   subscribeRealtime();
+  setInterval(()=>{ if (S.students.length) renderAll(); }, 60000);
 }
 async function loadAll(){
   const [st, lv, dl, sf] = await Promise.all([
@@ -378,7 +400,7 @@ function renderAll(){ renderDash(); renderStudents(); renderLeaves(); renderExit
 const BOARD_TH = '<tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>담당 PA</th><th>PA 연락처</th><th>층 LA</th><th>LA 연락처</th></tr>';
 function boardRow(stu, r, i){
   const pa = paOf(stu.class_no), la = laOf(stu.room);
-  return `<tr class="click" onclick="openStudent(${stu.id})"><td>${i+1}</td><td><b>${esc(stu.kr_name)}</b></td><td>${esc(stu.class_no)}</td><td>${esc(stu.room)}</td><td>${esc(r.leave_at)}</td><td>${esc(r.return_at)}</td><td>${esc(r.planned_return)}</td><td>${esc(r.reason)}</td><td>${esc(pa.name||'')}</td><td>${esc(pa.phone||'')}</td><td>${esc(la.name||'')}</td><td>${esc(la.phone||'')}</td></tr>`;
+  return `<tr class="click" onclick="openStudent(${stu.id})"><td>${i+1}</td><td><b>${esc(stu.kr_name)}</b></td><td>${esc(stu.class_no)}</td><td>${esc(stu.room)}</td><td>${esc(fmtDT(r.leave_at))}</td><td>${esc(fmtDT(r.return_at))}</td><td>${esc(fmtDT(r.planned_return))}</td><td>${esc(r.reason)}</td><td>${esc(pa.name||'')}</td><td>${esc(pa.phone||'')}</td><td>${esc(la.name||'')}</td><td>${esc(la.phone||'')}</td></tr>`;
 }
 function renderBoard(elId, cntId, list){
   $(cntId).textContent = list.length + '명';
@@ -391,15 +413,15 @@ function renderDash(){
   const left = withStatus.filter(x=>x.st.kr==='퇴소');
   const outH = withStatus.filter(x=>x.st.kr==='귀가(보건)'||x.st.kr==='병원 / hospital');
   const outP = withStatus.filter(x=>x.st.kr==='귀가(개인사유)');
-  const plan = withStatus.filter(x=>PLAN_TYPES.includes(x.st.kr));
-  const base = S.students.length, enrolled = base-left.length, oncampus = enrolled-outH.length-outP.length;
+  const plan = withStatus.filter(x=>PLAN_TYPES.includes(x.st.kr)||x.st.kr==='출발 전');
+  const dwait = S.delayed.filter(d=>d.status==='입소 예정');
+  const base = S.students.length, enrolled = base-left.length, oncampus = enrolled-outH.length-outP.length-dwait.length;
   $('d-base').textContent = base; $('d-enrolled').textContent = enrolled;
   $('d-oncampus').textContent = oncampus; $('d-out').textContent = outH.length+outP.length;
   $('d-left').textContent = left.length;
   renderBoard('b-outh','c-outh', outH.map(x=>({stu:x.stu, rec:x.st.rec})));
   renderBoard('b-outp','c-outp', outP.map(x=>({stu:x.stu, rec:x.st.rec})));
   renderBoard('b-plan','c-plan', plan.map(x=>({stu:x.stu, rec:x.st.rec})));
-  const dwait = S.delayed.filter(d=>d.status==='입소 예정');
   $('c-delay').textContent = dwait.length + '명';
   $('b-delay').innerHTML = dwait.length
     ? `<table><thead><tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>입소예정일</th><th>사유</th><th>비고</th></tr></thead><tbody>` +
@@ -426,7 +448,7 @@ function studentFilterList(){
     if (cf && String(s.class_no)!==cf) return false;
     if (stf==='입교' && st.kr!=='입교') return false;
     if (stf==='외부(귀가)' && !OUT_TYPES.includes(st.kr)) return false;
-    if (stf==='예정' && !PLAN_TYPES.includes(st.kr)) return false;
+    if (stf==='예정' && !(PLAN_TYPES.includes(st.kr)||st.kr==='출발 전')) return false;
     if (stf==='퇴소' && st.kr!=='퇴소') return false;
     return true;
   });
@@ -466,7 +488,7 @@ window.openStudent = function(id){
      <div class="sect">비고</div>
      <div class="grid2">${ed('비고1','ed-memo1',s.memo1)}${ed('비고2','ed-memo2',s.memo2)}</div>
      <div class="sect">외출외박·퇴소 이력 (${hist.length})</div>
-     ${hist.length?hist.map(r=>`<div class="hist"><b>${esc(r.rec_type)}</b> · ${esc(r.leave_at)} ${r.return_at?('→ 귀교 '+esc(r.return_at)):''} · ${esc(r.reason)} <span class="note">${esc(r.process_note)}</span></div>`).join(''):'<div class="note">기록 없음</div>'}`;
+     ${hist.length?hist.map(r=>`<div class="hist"><b>${esc(r.rec_type)}</b> · ${esc(fmtDT(r.leave_at))} ${r.return_at?('→ 귀교 '+esc(fmtDT(r.return_at))):''} · ${esc(r.reason)} <span class="note">${esc(r.process_note)}</span></div>`).join(''):'<div class="note">기록 없음</div>'}`;
   $('m-stu').classList.add('on');
 };
 async function saveStudent(){
@@ -490,7 +512,7 @@ function renderLeaves(){
       list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
         const cls = r.rec_type==='퇴소'?'c-left':OUT_TYPES.includes(r.rec_type)?'c-out':PLAN_TYPES.includes(r.rec_type)?'c-plan':BACK_TYPES.includes(r.rec_type)?'c-in':'c-med';
         const backBtn = (r.rec_type==='귀가(보건)'||r.rec_type==='귀가(개인사유)') ? `<button class="btn sm green" onclick="markReturn(${r.id})">귀교</button> ` : '';
-        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(r.leave_at)}</td><td>${esc(r.return_at)}</td><td>${esc(r.planned_return)}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
+        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(fmtDT(r.leave_at))}</td><td>${esc(fmtDT(r.return_at))}</td><td>${esc(fmtDT(r.planned_return))}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
           <td>${backBtn}<button class="btn sm ghost" onclick="editRec(${r.id})">수정</button> <button class="btn sm ghost" onclick="delRec(${r.id})">삭제</button></td></tr>`;
       }).join('') + '</tbody></table>'
     : '<div class="empty">기록 없음</div>';
@@ -504,7 +526,7 @@ function renderExits(){
       list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
         const cls = r.rec_type==='퇴소'?'c-left':'c-plan';
         const confirmBtn = r.rec_type==='퇴소 예정' ? `<button class="btn sm warn" onclick="markExit(${r.id})">퇴소 확정</button> ` : '';
-        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(r.leave_at)}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
+        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(fmtDT(r.leave_at))}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
           <td>${confirmBtn}<button class="btn sm ghost" onclick="editRec(${r.id})">수정</button> <button class="btn sm ghost" onclick="delRec(${r.id})">삭제</button></td></tr>`;
       }).join('') + '</tbody></table>'
     : '<div class="empty">퇴소 기록 없음</div>';
@@ -529,9 +551,10 @@ function openRecModal(rec, presetStu, mode){
   $('mr-student').value = rec ? stuName(rec.student_id) : (presetStu ? presetStu.kr_name : '');
   $('mr-student').disabled = !!rec;
   $('mr-type').value = rec ? rec.rec_type : opts[0];
-  $('mr-leave').value = rec ? rec.leave_at : '';
-  $('mr-return').value = rec ? rec.return_at : '';
-  $('mr-planned').value = rec ? rec.planned_return : '';
+  const L = splitDT(rec?rec.leave_at:''), R = splitDT(rec?rec.return_at:''), P = splitDT(rec?rec.planned_return:'');
+  $('mr-leave-d').value = rec ? L.d : nowDT().slice(0,10); $('mr-leave-t').value = L.t;
+  $('mr-return-d').value = R.d; $('mr-return-t').value = R.t;
+  $('mr-planned-d').value = P.d; $('mr-planned-t').value = P.t;
   $('mr-reason').value = rec ? rec.reason : '';
   $('mr-note').value = rec ? rec.process_note : '';
   $('m-rec').classList.add('on');
@@ -547,8 +570,8 @@ window.delRec = async id => {
 };
 window.markReturn = async id => {
   const r = S.leaves.find(x=>x.id===id); if(!r) return;
-  const when = prompt(`${stuName(r.student_id)} 귀교일 입력 (예: 1/22(목) 15:00)`, '');
-  if (when === null) return;
+  const when = nowDT();
+  if (!confirm(`${stuName(r.student_id)} 귀교 처리할까요?\n귀교일: ${fmtDT(when)} (지금 기준 · 다른 시각은 [수정]에서)`)) return;
   const newType = r.rec_type.includes('보건') ? '귀교(보건)' : '귀교(개인사유)';
   const { error } = await sb.from('leave_records').update({rec_type:newType, return_at:when, updated_by:me.email}).eq('id', id);
   if (error) { alert('실패: '+error.message); return; }
@@ -562,8 +585,10 @@ function resolveStudent(input){
   return S.students.find(s=>s.kr_name===name) || S.students.find(s=>s.kr_name.startsWith(name)) || null;
 }
 async function saveRec(){
-  const payload = { rec_type: $('mr-type').value, leave_at: $('mr-leave').value.trim(),
-    return_at: $('mr-return').value.trim(), planned_return: $('mr-planned').value.trim(),
+  const payload = { rec_type: $('mr-type').value,
+    leave_at: joinDT($('mr-leave-d').value, $('mr-leave-t').value),
+    return_at: joinDT($('mr-return-d').value, $('mr-return-t').value),
+    planned_return: joinDT($('mr-planned-d').value, $('mr-planned-t').value),
     reason: $('mr-reason').value.trim(), process_note: $('mr-note').value.trim(), updated_by: me.email };
   let error;
   if (editingRec) ({ error } = await sb.from('leave_records').update(payload).eq('id', editingRec.id));
@@ -627,7 +652,7 @@ function renderRefund(){
     ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>접수번호</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>사유</th><th>환불일수</th><th>환불비고</th></tr></thead><tbody>` +
       list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
         const cls = r.rec_type==='퇴소'?'c-left':OUT_TYPES.includes(r.rec_type)?'c-out':'c-in';
-        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${s.id||''}</td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(r.leave_at)}</td><td>${esc(r.return_at)}</td><td>${esc(r.reason)}</td>
+        return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${s.id||''}</td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(fmtDT(r.leave_at))}</td><td>${esc(fmtDT(r.return_at))}</td><td>${esc(r.reason)}</td>
         <td><input style="width:70px;background:var(--yellow)" value="${esc(r.refund_days)}" onchange="saveRefund(${r.id},'refund_days',this.value)"></td>
         <td><input style="width:180px;background:var(--yellow)" value="${esc(r.refund_note)}" onchange="saveRefund(${r.id},'refund_note',this.value)"></td></tr>`;
       }).join('') + '</tbody></table>'
