@@ -201,7 +201,7 @@ tr.click{cursor:pointer}
     <button class="btn sm" id="l-add">+ 외출외박 기록</button>
   </div>
   <div class="panel"><div class="pbody" id="l-table"></div></div>
-  <p class="note">귀교 시 [귀교] 버튼 → 귀교일 입력만 하면 끝. 외출외박은 정산과 무관합니다. 퇴소는 [퇴소] 탭에서.</p>
+  <p class="note">흐름: '귀가 예정(보건/개인사유)'으로 적어두면 현황판 [예정] 보드에만 표시 → 실제 출발 시 [출발] 버튼으로 시각 입력 → 현재 외부로 이동 → 복귀 시 [귀교]. 외출외박은 정산과 무관, 퇴소는 [퇴소] 탭에서.</p>
 </div>
 
 <div class="view" id="v-exits">
@@ -301,6 +301,7 @@ const OUT_TYPES = ['귀가(보건)','귀가(개인사유)','병원 / hospital'];
 const PLAN_TYPES = ['귀가 예정','퇴소 예정'];
 const BACK_TYPES = ['귀교(보건)','귀교(개인사유)'];
 const EXIT_TYPES = ['퇴소','퇴소 예정'];
+const isPlanType = t => String(t||'').startsWith('귀가 예정') || t === '퇴소 예정';
 function parseDT(v){
   if (!v) return null;
   const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
@@ -341,12 +342,12 @@ function statusOf(stu){
     if ((t==='귀가(보건)'||t==='귀가(개인사유)') && !hasDeparted(r)) return {kr:'출발 전', cls:'c-plan', rec:r};
     return {kr:t, cls:'c-out', rec:r};
   }
-  if (PLAN_TYPES.includes(t)) return {kr:t, cls:'c-plan', rec:r};
+  if (isPlanType(t)) return {kr:t, cls:'c-plan', rec:r};
   return {kr:t, cls:'c-med', rec:r}; // 안정/진료
 }
 const stuName = sid => (S.students.find(s=>s.id===sid)||{}).kr_name || '?';
 const paOf = cls => S.staff.find(x=>x.role==='PA' && String(x.key)===String(cls)) || {};
-const laOf = room => { const f = String(room||'')[0]; return S.staff.find(x=>x.role==='LA' && String(x.key)===f) || {}; };
+const laOf = room => { const d = String(room||'').replace(/\D/g,''); const f = d.length>2 ? d.slice(0,-2) : ''; return S.staff.find(x=>x.role==='LA' && String(x.key)===f) || {}; };
 
 /* ---------- 초기화 ---------- */
 window.addEventListener('DOMContentLoaded', async () => {
@@ -406,14 +407,21 @@ function renderAll(){ renderDash(); renderStudents(); renderLeaves(); renderExit
 
 /* ---------- 현황판 ---------- */
 const BOARD_TH = '<tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>담당 PA</th><th>PA 연락처</th><th>층 LA</th><th>LA 연락처</th></tr>';
-function boardRow(stu, r, i){
+function boardRow(stu, r, i, withAct){
   const pa = paOf(stu.class_no), la = laOf(stu.room);
-  return `<tr class="click" onclick="openStudent(${stu.id})"><td>${i+1}</td><td><b>${esc(stu.kr_name)}</b></td><td>${esc(stu.class_no)}</td><td>${esc(stu.room)}</td><td>${esc(fmtDT(r.leave_at))}</td><td>${esc(fmtDT(r.return_at))}</td><td>${esc(fmtDT(r.planned_return))}</td><td>${esc(r.reason)}</td><td>${esc(pa.name||'')}</td><td>${esc(pa.phone||'')}</td><td>${esc(la.name||'')}</td><td>${esc(la.phone||'')}</td></tr>`;
+  let act = '';
+  if (withAct) {
+    if (r && String(r.rec_type||'').startsWith('귀가 예정')) act = `<td><button class="btn sm" onclick="event.stopPropagation();markDepart(${r.id})">출발</button></td>`;
+    else if (r && r.rec_type==='퇴소 예정') act = `<td><button class="btn sm warn" onclick="event.stopPropagation();markExit(${r.id})">퇴소 확정</button></td>`;
+    else act = '<td></td>';
+  }
+  return `<tr class="click" onclick="openStudent(${stu.id})"><td>${i+1}</td><td><b>${esc(stu.kr_name)}</b></td><td>${esc(stu.class_no)}</td><td>${esc(stu.room)}</td><td>${esc(fmtDT(r.leave_at))}</td><td>${esc(fmtDT(r.return_at))}</td><td>${esc(fmtDT(r.planned_return))}</td><td>${esc(r.reason)}</td><td>${esc(pa.name||'')}</td><td>${esc(pa.phone||'')}</td><td>${esc(la.name||'')}</td><td>${esc(la.phone||'')}</td>${act}</tr>`;
 }
-function renderBoard(elId, cntId, list){
+function renderBoard(elId, cntId, list, withAct){
   $(cntId).textContent = list.length + '명';
+  const th = withAct ? BOARD_TH.replace('</tr>','<th></th></tr>') : BOARD_TH;
   $(elId).innerHTML = list.length
-    ? `<table><thead>${BOARD_TH}</thead><tbody>${list.map((x,i)=>boardRow(x.stu,x.rec,i)).join('')}</tbody></table>`
+    ? `<table><thead>${th}</thead><tbody>${list.map((x,i)=>boardRow(x.stu,x.rec,i,withAct)).join('')}</tbody></table>`
     : '<div class="empty">없음</div>';
 }
 function renderDash(){
@@ -421,7 +429,7 @@ function renderDash(){
   const left = withStatus.filter(x=>x.st.kr==='퇴소');
   const outH = withStatus.filter(x=>x.st.kr==='귀가(보건)'||x.st.kr==='병원 / hospital');
   const outP = withStatus.filter(x=>x.st.kr==='귀가(개인사유)');
-  const plan = withStatus.filter(x=>PLAN_TYPES.includes(x.st.kr)||x.st.kr==='출발 전');
+  const plan = withStatus.filter(x=>isPlanType(x.st.kr)||x.st.kr==='출발 전');
   const dwait = S.delayed.filter(d=>d.status==='입소 예정');
   const base = S.students.length, enrolled = base-left.length, oncampus = enrolled-outH.length-outP.length-dwait.length;
   $('d-base').textContent = base; $('d-enrolled').textContent = enrolled;
@@ -429,7 +437,7 @@ function renderDash(){
   $('d-left').textContent = left.length;
   renderBoard('b-outh','c-outh', outH.map(x=>({stu:x.stu, rec:x.st.rec})));
   renderBoard('b-outp','c-outp', outP.map(x=>({stu:x.stu, rec:x.st.rec})));
-  renderBoard('b-plan','c-plan', plan.map(x=>({stu:x.stu, rec:x.st.rec})));
+  renderBoard('b-plan','c-plan', plan.map(x=>({stu:x.stu, rec:x.st.rec})), true);
   $('c-delay').textContent = dwait.length + '명';
   $('b-delay').innerHTML = dwait.length
     ? `<table><thead><tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>입소예정일</th><th>사유</th><th>비고</th></tr></thead><tbody>` +
@@ -456,7 +464,7 @@ function studentFilterList(){
     if (cf && String(s.class_no)!==cf) return false;
     if (stf==='입교' && st.kr!=='입교') return false;
     if (stf==='외부(귀가)' && !OUT_TYPES.includes(st.kr)) return false;
-    if (stf==='예정' && !(PLAN_TYPES.includes(st.kr)||st.kr==='출발 전')) return false;
+    if (stf==='예정' && !(isPlanType(st.kr)||st.kr==='출발 전')) return false;
     if (stf==='퇴소' && st.kr!=='퇴소') return false;
     return true;
   });
@@ -513,15 +521,16 @@ function renderLeaves(){
   const f = $('l-filter').value;
   let list = [...S.leaves].filter(r=>!EXIT_TYPES.includes(r.rec_type)).sort((a,b)=>b.id-a.id);
   if (f==='out') list = list.filter(r=>OUT_TYPES.includes(r.rec_type));
-  else if (f==='plan') list = list.filter(r=>r.rec_type==='귀가 예정');
+  else if (f==='plan') list = list.filter(r=>String(r.rec_type).startsWith('귀가 예정'));
   else if (f==='back') list = list.filter(r=>BACK_TYPES.includes(r.rec_type));
   $('l-table').innerHTML = list.length
     ? `<table><thead><tr><th>#</th><th>상태</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>처리 현황</th><th></th></tr></thead><tbody>` +
       list.map(r => { const s = S.students.find(x=>x.id===r.student_id)||{};
         const cls = r.rec_type==='퇴소'?'c-left':OUT_TYPES.includes(r.rec_type)?'c-out':PLAN_TYPES.includes(r.rec_type)?'c-plan':BACK_TYPES.includes(r.rec_type)?'c-in':'c-med';
         const backBtn = (r.rec_type==='귀가(보건)'||r.rec_type==='귀가(개인사유)') ? `<button class="btn sm green" onclick="markReturn(${r.id})">귀교</button> ` : '';
+        const departBtn = String(r.rec_type).startsWith('귀가 예정') ? `<button class="btn sm" onclick="markDepart(${r.id})">출발</button> ` : '';
         return `<tr><td>${r.id}</td><td><span class="chip ${cls}">${esc(r.rec_type)}</span></td><td><b>${esc(s.kr_name||'?')}</b></td><td>${esc(s.class_no||'')}</td><td>${esc(s.room||'')}</td><td>${esc(fmtDT(r.leave_at))}</td><td>${esc(fmtDT(r.return_at))}</td><td>${esc(fmtDT(r.planned_return))}</td><td>${esc(r.reason)}</td><td>${esc(r.process_note)}</td>
-          <td>${backBtn}<button class="btn sm ghost" onclick="editRec(${r.id})">수정</button> <button class="btn sm ghost" onclick="delRec(${r.id})">삭제</button></td></tr>`;
+          <td>${departBtn}${backBtn}<button class="btn sm ghost" onclick="editRec(${r.id})">수정</button> <button class="btn sm ghost" onclick="delRec(${r.id})">삭제</button></td></tr>`;
       }).join('') + '</tbody></table>'
     : '<div class="empty">기록 없음</div>';
 }
@@ -548,7 +557,7 @@ window.markExit = async id => {
   loadAll();
 };
 let editingRec = null;
-const LEAVE_OPTS = ['귀가(보건)','귀가(개인사유)','귀가 예정','귀교(보건)','귀교(개인사유)','안정 / bedrest','진료 / treatment','병원 / hospital'];
+const LEAVE_OPTS = ['귀가 예정(보건)','귀가 예정(개인사유)','귀가(보건)','귀가(개인사유)','귀교(보건)','귀교(개인사유)','안정 / bedrest','진료 / treatment','병원 / hospital'];
 const EXIT_OPTS = ['퇴소 예정','퇴소'];
 function openRecModal(rec, presetStu, mode){
   editingRec = rec;
@@ -574,6 +583,22 @@ window.delRec = async id => {
   const { error } = await sb.from('leave_records').delete().eq('id', id);
   if (error) { alert('삭제 실패: '+error.message); return; }
   audit('기록삭제', stuName(r.student_id), `${r.rec_type} ${r.leave_at}`);
+  loadAll();
+};
+window.markDepart = async id => {
+  const r = S.leaves.find(x=>x.id===id); if(!r) return;
+  const t = prompt(`${stuName(r.student_id)} 실제 출발 시각 (24시간제, 오늘 날짜 기준)`, nowDT().slice(11,16));
+  if (t === null) return;
+  const nt = normTime(t);
+  if (!nt) { alert('시간은 24시간제 HH:MM으로 입력하세요 (예: 15:30)'); return; }
+  let newType;
+  if (r.rec_type === '귀가 예정(보건)') newType = '귀가(보건)';
+  else if (r.rec_type === '귀가 예정(개인사유)') newType = '귀가(개인사유)';
+  else newType = confirm('보건 사유인가요?\n확인 = 귀가(보건) · 취소 = 귀가(개인사유)') ? '귀가(보건)' : '귀가(개인사유)';
+  const leave_at = `${nowDT().slice(0,10)} ${nt}`;
+  const { error } = await sb.from('leave_records').update({rec_type:newType, leave_at, updated_by:me.email}).eq('id', id);
+  if (error) { alert('실패: '+error.message); return; }
+  audit('출발처리', stuName(r.student_id), `${r.rec_type}→${newType} ${leave_at}`);
   loadAll();
 };
 window.markReturn = async id => {
