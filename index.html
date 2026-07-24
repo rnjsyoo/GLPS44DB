@@ -79,6 +79,8 @@ tr.click{cursor:pointer}
 .b-dup{background:#fbe4e1;color:var(--red)}
 .b-sib{background:#e2ecfd;color:#2456a8}
 .b-alg{background:var(--yellow);color:#8a6d1a}
+.b-lead{background:#1f4e5f;color:#fff}
+.b-nocert{background:#fbe4e1;color:var(--red)}
 /* toolbar */
 .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .tools input[type=search]{width:230px}
@@ -152,6 +154,7 @@ tr.click{cursor:pointer}
   <button class="ntab" data-v="exits">퇴소</button>
   <button class="ntab" data-v="delayed">지연입소</button>
   <button class="ntab" data-v="refund">정산(법인)</button>
+  <button class="ntab" data-v="cert">수료증</button>
   <button class="ntab" data-v="settings">설정</button>
 </div></nav>
 <main>
@@ -225,6 +228,24 @@ tr.click{cursor:pointer}
 <div class="view" id="v-refund">
   <p class="note" style="margin-bottom:10px">퇴소 탭에 작성된 기록만 표시됩니다(외출외박 무관). 환불일수·비고 칸은 수정하면 자동 저장.</p>
   <div class="panel"><div class="pbody" id="r-table"></div></div>
+</div>
+
+<div class="view" id="v-cert">
+  <div class="cards">
+    <div class="scard"><div class="k">총 인원</div><div class="v" id="ct-total">-</div></div>
+    <div class="scard hl"><div class="k">퇴소 <small>(7/31까지)</small></div><div class="v" id="ct-exit">-</div></div>
+    <div class="scard"><div class="k">수료 대상 <small>(총원-퇴소)</small></div><div class="v" id="ct-cert">-</div></div>
+    <div class="scard"><div class="k">반장</div><div class="v" id="ct-lead">-</div></div>
+  </div>
+  <div class="tools">
+    <select id="ct-filter"><option value="cert">수료 대상만</option><option value="all">전체(퇴소 포함)</option><option value="lead">반장만</option></select>
+    <select id="ct-class"><option value="">반 전체</option></select>
+    <span style="flex:1"></span>
+    <span class="note">이름 옆 ☆를 눌러 반장 지정</span>
+    <button class="btn ghost sm" id="ct-csv">수료명단 CSV</button>
+  </div>
+  <p class="note" style="margin:0 0 10px">기준: 8월 1일 수업을 들은 학생 = 7월 31일까지 퇴소하지 않은 전원이 수료 대상입니다. 8/1 이후 퇴소자도 수료에 포함됩니다.</p>
+  <div class="panel"><div class="pbody" id="ct-table"></div></div>
 </div>
 
 <div class="view" id="v-settings">
@@ -302,6 +323,13 @@ const PLAN_TYPES = ['귀가 예정','퇴소 예정'];
 const BACK_TYPES = ['귀교(보건)','귀교(개인사유)'];
 const EXIT_TYPES = ['퇴소','퇴소 예정'];
 const isPlanType = t => String(t||'').startsWith('귀가 예정') || t === '퇴소 예정';
+const CERT_CUTOFF = new Date(2026, 6, 31, 23, 59, 59);  // 7월 31일 종료 시점 (월 0-indexed)
+function exitedByCutoff(stu){
+  const exits = S.leaves.filter(r => r.student_id===stu.id && r.rec_type==='퇴소');
+  if (!exits.length) return false;
+  return exits.some(r => { const dt = parseDT(r.leave_at); return dt ? dt <= CERT_CUTOFF : true; });
+}
+function isCertified(stu){ return !exitedByCutoff(stu); }
 function parseDT(v){
   if (!v) return null;
   const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
@@ -403,7 +431,7 @@ function subscribeRealtime(){
 async function audit(action, target, detail){
   try { await sb.from('audit_log').insert({user_email: me.email, action, target, detail: String(detail||'').slice(0,500)}); } catch(e){}
 }
-function renderAll(){ renderDash(); renderStudents(); renderLeaves(); renderExits(); renderDelayed(); renderRefund(); renderStaff(); fillDatalist(); }
+function renderAll(){ renderDash(); renderStudents(); renderLeaves(); renderExits(); renderDelayed(); renderRefund(); renderCert(); renderStaff(); fillDatalist(); }
 
 /* ---------- 현황판 ---------- */
 const BOARD_TH = '<tr><th>#</th><th>이름</th><th>반</th><th>호실</th><th>귀가(퇴소)일</th><th>귀교일</th><th>귀교예정일(신청)</th><th>사유</th><th>담당 PA</th><th>PA 연락처</th><th>층 LA</th><th>LA 연락처</th></tr>';
@@ -477,7 +505,7 @@ function renderStudents(){
   $('s-count').textContent = `${list.length}명 / 전체 ${S.students.length}명`;
   $('s-table').innerHTML = `<table><thead><tr><th>접수번호</th><th>이름</th><th>영문명</th><th>성별</th><th>학년</th><th>반</th><th>호실</th><th>상태</th><th>학교</th><th>보호자1</th></tr></thead><tbody>` +
     list.map(s => { const st = statusOf(s);
-      const bd = (s.is_dup?'<span class="badge b-dup">동명</span>':'') + (s.sib_group?'<span class="badge b-sib">형제</span>':'') + (s.allergy?'<span class="badge b-alg">알레르기</span>':'');
+      const bd = (s.is_leader?'<span class="badge b-lead">반장</span>':'') + (s.is_dup?'<span class="badge b-dup">동명</span>':'') + (s.sib_group?'<span class="badge b-sib">형제</span>':'') + (s.allergy?'<span class="badge b-alg">알레르기</span>':'');
       return `<tr class="click" onclick="openStudent(${s.id})"><td>${s.id}</td><td><b>${esc(s.kr_name)}</b>${bd}</td><td>${esc(s.en_name)}</td><td>${esc(s.gender)}</td><td>${esc(s.grade)}</td><td>${esc(s.class_no)}</td><td>${esc(s.room)}</td><td><span class="chip ${st.cls}">${esc(st.kr)}</span></td><td>${esc(s.school)}</td><td>${esc(s.g1_phone)}</td></tr>`;
     }).join('') + '</tbody></table>';
 }
@@ -681,6 +709,39 @@ async function saveDl(){
 }
 
 /* ---------- 정산(법인) ---------- */
+function renderCert(){
+  const cls = [...new Set(S.students.map(s=>s.class_no).filter(v=>v!==''))].sort((a,b)=>Number(a)-Number(b));
+  const sel = $('ct-class'), cur = sel.value;
+  sel.innerHTML = '<option value="">반 전체</option>' + cls.map(c=>`<option${String(c)===cur?' selected':''}>${esc(c)}</option>`).join('');
+  const certed = S.students.filter(isCertified);
+  const exited = S.students.length - certed.length;
+  $('ct-total').textContent = S.students.length;
+  $('ct-exit').textContent = exited;
+  $('ct-cert').textContent = certed.length;
+  $('ct-lead').textContent = S.students.filter(s=>s.is_leader).length;
+  const f = $('ct-filter').value, cf = $('ct-class').value;
+  let list = S.students.slice();
+  if (f==='cert') list = list.filter(isCertified);
+  else if (f==='lead') list = list.filter(s=>s.is_leader);
+  if (cf) list = list.filter(s=>String(s.class_no)===cf);
+  list.sort((a,b)=>(Number(a.class_no||999)-Number(b.class_no||999)) || (b.is_leader-a.is_leader) || a.kr_name.localeCompare(b.kr_name,'ko'));
+  $('ct-table').innerHTML = list.length
+    ? `<table><thead><tr><th>반</th><th>반장</th><th>이름</th><th>영문명</th><th>성별</th><th>학년</th><th>호실</th><th>수료</th><th>비고</th></tr></thead><tbody>` +
+      list.map(s => { const cert = isCertified(s);
+        const star = `<button class="btn sm ghost" style="padding:2px 7px" onclick="event.stopPropagation();toggleLeader(${s.id})">${s.is_leader?'★':'☆'}</button>`;
+        const cchip = cert ? '<span class="chip c-in">수료</span>' : '<span class="badge b-nocert">퇴소(미수료)</span>';
+        return `<tr class="click" onclick="openStudent(${s.id})"><td><b>${esc(s.class_no)}</b></td><td style="text-align:center">${star}</td><td><b>${esc(s.kr_name)}</b>${s.is_leader?'<span class="badge b-lead">반장</span>':''}</td><td>${esc(s.en_name)}</td><td>${esc(s.gender)}</td><td>${esc(s.grade)}</td><td>${esc(s.room)}</td><td>${cchip}</td><td>${esc(s.memo1||'')}</td></tr>`;
+      }).join('') + '</tbody></table>'
+    : '<div class="empty">해당 학생 없음</div>';
+}
+window.toggleLeader = async id => {
+  const s = S.students.find(x=>x.id===id); if(!s) return;
+  const nv = !s.is_leader;
+  const { error } = await sb.from('students').update({is_leader:nv, updated_by:me.email}).eq('id', id);
+  if (error) { alert('저장 실패: '+error.message + '\n\n※ 반장 기능은 Supabase에서 컬럼 추가 SQL을 먼저 실행해야 합니다. (수료증_반장_복사용.txt)'); return; }
+  s.is_leader = nv; audit('반장지정', s.kr_name, nv?'지정':'해제');
+  renderCert(); renderStudents();
+};
 function renderRefund(){
   const list = S.leaves.filter(r=>r.rec_type==='퇴소').sort((a,b)=>b.id-a.id);
   $('r-table').innerHTML = list.length
@@ -738,6 +799,12 @@ function downloadCSV(name, headers, rows){
   a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download = name; a.click();
 }
+function csvCert(){
+  const list = S.students.filter(isCertified).sort((a,b)=>(Number(a.class_no||999)-Number(b.class_no||999))||(b.is_leader-a.is_leader)||a.kr_name.localeCompare(b.kr_name,'ko'));
+  downloadCSV(`GLPS44_수료명단_${new Date().toISOString().slice(0,10)}.csv`,
+    ['반','반장','이름','영문명','성별','학년','호실','학교'],
+    list.map(s=>[s.class_no, s.is_leader?'반장':'', s.kr_name, s.en_name, s.gender, s.grade, s.room, s.school]));
+}
 function csvStudents(){
   const list = studentFilterList();
   downloadCSV(`GLPS44_학생명단_${new Date().toISOString().slice(0,10)}.csv`,
@@ -777,6 +844,9 @@ function bindUI(){
     $('md-status').value='입소 예정'; $('md-expected').value=''; $('md-reason').value=''; $('md-note').value=''; $('m-dl').classList.add('on'); };
   $('md-save').onclick = saveDl;
   $('s-csv').onclick = csvStudents;
+  $('ct-filter').addEventListener('change', renderCert);
+  $('ct-class').addEventListener('change', renderCert);
+  $('ct-csv').onclick = csvCert;
   $('l-csv').onclick = csvLeaves;
   $('ex-csv').onclick = csvExits;
   $('au-refresh').onclick = renderAudit;
